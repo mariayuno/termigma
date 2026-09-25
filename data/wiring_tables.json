@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "project": "termigma",
+    "description": "Historical wiring data used by the termigma engine.",
+    "sourcing_note": "These are the widely published Wehrmacht/Kriegsmarine Enigma I/M3/M4 wiring tables (rotors I-VIII, M4 Beta/Gamma wheels, UKW B/C and their thin M4 counterparts). Cross-checked by reciprocity tests and one published reference test vector (rotors I-II-III, rings 01-01-01, start AAA, reflector B, no plugboard -> \"AAAAA\" -> \"BDZGO\"); see tests/test_engine.py. NOT included: verified wiring for Enigma K, Enigma D, Swiss-K, Railway (R/R-Null), Tirpitz (T), Norenigma (N), Sonder-Enigma (S), or the Abwehr G-machines (G-111/G-260/G-312/G-401) - not confidently sourced, and a guess presented as fact would be worse than the gap. The commercial-style preset demonstrates the genuine QWERTZU entry-wheel wiring and lack of a plugboard on commercial machines, but reuses the Enigma I rotor set as a stand-in rather than true K/D rotors.",
+    "see_also": "https://people.physik.hu-berlin.de/~palloks/js/enigma/enigma-u_v262_en.html"
+  },
+  "rotors": {
+    "I": {
+      "wiring": "EKMFLGDQVZNTOWYHXUSPAIBRCJ",
+      "notches": [
+        "Q"
+      ]
+    },
+    "II": {
+      "wiring": "AJDKSIRUXBLHWTMCQGZNPYFVOE",
+      "notches": [
+        "E"
+      ]
+    },
+    "III": {
+      "wiring": "BDFHJLCPRTXVZNYEIWGAKMUSQO",
+      "notches": [
+        "V"
+      ]
+    },
+    "IV": {
+      "wiring": "ESOVPZJAYQUIRHXLNFTGKDCMWB",
+      "notches": [
+        "J"
+      ]
+    },
+    "V": {
+      "wiring": "VZBRGITYUPSDNHLXAWMJQOFECK",
+      "notches": [
+        "Z"
+      ]
+    },
+    "VI": {
+      "wiring": "JPGVOUMFYQBENHZRDKASXLICTW",
+      "notches": [
+        "M",
+        "Z"
+      ]
+    },
+    "VII": {
+      "wiring": "NZJHGRCXMYSWBOUFAIVLPEKQDT",
+      "notches": [
+        "M",
+        "Z"
+      ]
+    },
+    "VIII": {
+      "wiring": "FKQHTLXOCBJSPDZRAMEWNIUYGV",
+      "notches": [
+        "M",
+        "Z"
+      ]
+    }
+  },
+  "fourth_wheels_M4": {
+    "Beta": {
+      "wiring": "LEYJVCNIXWPBQMDRTAKZGFUHOS"
+    },
+    "Gamma": {
+      "wiring": "FSOKANUERHMBTIYCWLQPZXVGJD"
+    }
+  },
+  "reflectors": {
+    "B": "YRUHQSLDPXNGOKMIEBFZCWVJAT",
+    "C": "FVPJIAOYEDRZXWGCTKUQSBNMHL",
+    "B-thin": "ENKQAUYWJICOPBLMDXZVFTHRGS",
+    "C-thin": "RDOBJNTKVEHMLFCWZAXGYIPSUQ"
+  },
+  "keyboard_layout_QWERTZ": [
+    "QWERTZUIO",
+    "ASDFGHJK",
+    "PYXCVBNML"
+  ],
+  "commercial_entry_wheel_order": "QWERTZUIOASDFGHJKPYXCVBNML"
+}
