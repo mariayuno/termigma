@@ -71,3 +71,42 @@ def test_movable_notch_override():
 def test_all_rotor_notches_present():
     for name, data in ROTOR_DATA.items():
         assert data["notches"], f"{name} should have at least one notch"
+
+
+def test_get_set_positions_roundtrip():
+    """get_positions / set_positions should save and restore exactly."""
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "D", "V"))
+    snap = m.get_positions()
+    # step once, changing the positions
+    m.encode_letter("A")
+    m.set_positions(snap)
+    assert m.get_positions() == snap
+
+
+def test_backspace_restores_output():
+    """Encoding X, then undoing (set_positions), then encoding X again
+    must produce the same ciphertext both times — the rotor positions
+    before each keypress were identical."""
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "A", "A"))
+    before = m.get_positions()
+    out1, _ = m.encode_letter("X")
+    # rewind to the saved snapshot
+    m.set_positions(before)
+    out2, _ = m.encode_letter("X")
+    assert out1 == out2
+
+
+def test_backspace_across_double_step():
+    """The double-step anomaly affects both M and L rotors at once.  A
+    snapshot taken before the keypress that triggers it must restore both."""
+    # Rotor III notch is V, so right rotor at V will advance middle.
+    # Middle rotor II notch is E, so at E a double-step fires.
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "E", "U"))
+    before = m.get_positions()
+    m.encode_letter("A")
+    after_step = m.get_positions()
+    # Double-step means both middle AND left advanced.
+    assert after_step != before
+    # Restoring must bring all three back.
+    m.set_positions(before)
+    assert m.get_positions() == before
