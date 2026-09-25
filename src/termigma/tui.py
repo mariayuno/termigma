@@ -368,7 +368,33 @@ def custom_reflector_screen(stdscr, machine):
     curses.curs_set(0)
 
 
-def run(stdscr):
+def _fmt_config(machine):
+    """Return a human-readable block summarising the current machine settings."""
+    lines = [
+        "  Reflector  : " + machine.reflector_kind,
+        "  ETW        : " + (
+            "military (straight-through)" if machine.etw.mode == "military"
+            else "commercial (QWERTZU)"
+        ),
+    ]
+    wheels = []
+    if machine.fourth:
+        wheels.append(("4th (fixed)", machine.fourth))
+    for label, w in (("Left", machine.left), ("Middle", machine.middle), ("Right", machine.right)):
+        wheels.append((label, w))
+    for label, w in wheels:
+        lines.append(f"  {label:<12}: {w.name}  ring {w.ring_setting:02d}  start {w.position_letter}")
+    if machine.plugboard_enabled:
+        pairs = machine.plugboard.pairs_list()
+        plug_str = " ".join(f"{a}{b}" for a, b in pairs) if pairs else "(none)"
+        lines.append(f"  Plugboard  : {plug_str}")
+    else:
+        lines.append("  Plugboard  : disabled")
+    return "\n".join(lines)
+
+
+def run(stdscr, out):
+    """Run the TUI.  Populates *out* with session data before returning."""
     curses.curs_set(0)
     stdscr.keypad(True)
     init_colors()
@@ -436,9 +462,32 @@ def run(stdscr):
                 state["log"] = state["log"][-500:]
                 state["position_stack"] = state["position_stack"][-500:]
 
+    # Populate the summary so main() can print it after curses closes.
+    plain = "".join(p for p, _ in state["log"] if p != "/")
+    cipher = "".join(c for _, c in state["log"] if c != "/")
+    out["config"] = _fmt_config(machine)
+    out["plain"] = plain
+    out["cipher"] = cipher
+
 
 def main():
-    curses.wrapper(run)
+    out = {}
+    curses.wrapper(run, out)
+    if not out:
+        return
+    plain = out["plain"]
+    cipher = out["cipher"]
+    if not plain:
+        return
+    sep = "-" * 60
+    print()
+    print(sep)
+    print("CONFIGURATION")
+    print(out["config"])
+    print(sep)
+    print(f"  Plaintext  ({len(plain):>4} letters): {plain}")
+    print(f"  Ciphertext ({len(cipher):>4} letters): {cipher}")
+    print(sep)
 
 
 if __name__ == "__main__":
