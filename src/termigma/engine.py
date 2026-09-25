@@ -193,6 +193,20 @@ class Enigma:
         self.fourth = FourthWheel(fourth_wheel, fourth_ring, fourth_pos) if fourth_wheel else None
         self.movable_notches = any(n is not None for n in rotor_notches)
 
+    def get_positions(self):
+        """Return a snapshot of all rotor positions as a plain tuple.
+
+        The snapshot captures only the three main rotor positions; the 4th
+        wheel (Beta/Gamma) is fixed and never steps, so there is nothing to
+        capture for it.  Useful for saving state before a keypress so that it
+        can be restored later (e.g. to undo that keypress).
+        """
+        return (self.left.position, self.middle.position, self.right.position)
+
+    def set_positions(self, snapshot):
+        """Restore rotor positions from a snapshot returned by get_positions."""
+        self.left.position, self.middle.position, self.right.position = snapshot
+
     def step_rotors(self):
         mid_notch = self.middle.at_notch()
         right_notch = self.right.at_notch()
