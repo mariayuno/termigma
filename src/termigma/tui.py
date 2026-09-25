@@ -374,7 +374,17 @@ def run(stdscr):
     init_colors()
 
     machine = Enigma()
-    state = {"log": [], "last_path": [], "last_key": None, "last_out": None}
+    state = {
+        "log": [],
+        "last_path": [],
+        "last_key": None,
+        "last_out": None,
+        # Stack of rotor-position snapshots, one entry pushed *before* each
+        # letter keypress.  On backspace we pop the top snapshot and restore
+        # the machine to the state it was in before that letter was typed,
+        # which is how the real Enigma would behave if you could rewind it.
+        "position_stack": [],
+    }
 
     while True:
         draw_all(stdscr, machine, state)
@@ -393,12 +403,30 @@ def run(stdscr):
             state = {"log": [], "last_path": [], "last_key": None, "last_out": None}
         elif ch == curses.KEY_F5:
             custom_reflector_screen(stdscr, machine)
+        elif ch in (curses.KEY_BACKSPACE, 127, 8):
+            # Walk the last log entry back.  Spaces don't move the rotors, so
+            # only letter entries have a matching position snapshot to restore.
+            if state["log"]:
+                last_plain, _ = state["log"][-1]
+                state["log"].pop()
+                if last_plain != "/":
+                    # Restore the exact rotor positions that existed before
+                    # that keypress — including any carries or double-steps
+                    # that occurred — so the next letter typed enciphers as
+                    # though the deleted letter was never pressed.
+                    if state["position_stack"]:
+                        machine.set_positions(state["position_stack"].pop())
+                state["last_key"] = None
+                state["last_out"] = None
+                state["last_path"] = []
         elif ch == 32:
             state["log"].append(("/", "/"))
             state["last_key"] = None
             state["last_out"] = None
         elif 65 <= ch <= 90 or 97 <= ch <= 122:
             letter = chr(ch).upper()
+            # Save positions *before* the step so backspace can undo exactly.
+            state["position_stack"].append(machine.get_positions())
             out, path = machine.encode_letter(letter)
             state["last_key"] = letter
             state["last_out"] = out
@@ -406,6 +434,7 @@ def run(stdscr):
             state["log"].append((letter, out))
             if len(state["log"]) > 500:
                 state["log"] = state["log"][-500:]
+                state["position_stack"] = state["position_stack"][-500:]
 
 
 def main():
