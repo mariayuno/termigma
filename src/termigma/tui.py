@@ -87,7 +87,7 @@ def draw_all(stdscr, machine, state):
 
     safe_addstr(stdscr, 0, 0, " " * w, c_title)
     safe_addstr(stdscr, 0, 2, "T E R M I G M A  -  Interactive Enigma TUI", c_title | curses.A_BOLD)
-    safe_addstr(stdscr, 0, w - 22, "F1 Help   ESC Quit", c_title)
+    safe_addstr(stdscr, 0, w - 16, "F1 Help  ESC Quit", c_title)
 
     ry = 2
     draw_box(stdscr, ry, 2, 10, 60, "ROTORS", c_border)
@@ -156,7 +156,7 @@ def draw_all(stdscr, machine, state):
     fy = h - 2
     safe_addstr(stdscr, fy, 0, "-" * w, c_dim)
     safe_addstr(stdscr, fy + 1, 2,
-                "F1 Help  F2 Settings  F3 Plugboard  F4 Reset  F5 Custom UKW  ESC/Q Quit")
+                "F1 Help  F2 Settings  F3 Plugboard  F4 Reset  F5 Custom UKW  ESC Quit")
     stdscr.refresh()
 
 
@@ -195,7 +195,7 @@ def draw_help(stdscr):
         "  F3     plugboard editor - pairs like 'AB CD EF', up to 13 pairs",
         "  F5     custom (rewirable) reflector editor - needs exactly 13 pairs",
         "         covering all 26 letters (only used when Reflector = Custom)",
-        "  F4     reset to default settings          ESC/Q  quit",
+        "  F4     reset to default settings          ESC  quit",
         "",
         "Note: exact wirings for the more exotic commercial/national variants",
         "(K, D, Swiss-K, Railway, Tirpitz, Norenigma, Sonder, Abwehr G-machines)",
@@ -390,7 +390,7 @@ def run(stdscr):
         draw_all(stdscr, machine, state)
         ch = stdscr.getch()
 
-        if ch in (27, ord("q"), ord("Q")):
+        if ch == 27:   # ESC
             break
         elif ch == curses.KEY_F1:
             draw_help(stdscr)
