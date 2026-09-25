@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+**Fixed**
+- Backspace now correctly restores the exact rotor positions that existed
+  before the deleted keypress, including any middle-rotor carry or
+  double-step that it triggered.  Previously backspace was not handled at
+  all in the main input loop, so deleting a character left the rotors one
+  step ahead of where they should be, silently producing wrong ciphertext
+  for every subsequent letter.
+
+**Changed**
+- Q is no longer a quit key.  ESC is the only way to exit.  Q was the only
+  uppercase letter that could not appear in a message, which ruled out any
+  word containing it.  ESC alone is unambiguous and nothing in the TUI
+  needs Q for anything else.
+- On exit the program prints a session summary to the terminal: the machine
+  configuration in effect, the full plaintext and the corresponding
+  ciphertext.  Nothing is printed if no letters were typed.
+
+**Added**
+- `Enigma.get_positions()` and `Enigma.set_positions()` — thin helpers that
+  snapshot and restore the three main rotor positions as a plain tuple.
+  The backspace implementation depends on them and they are independently
+  tested.
+
 ## 1.0.0
 Packaged for PyPI as `termigma`.
 
