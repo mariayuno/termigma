@@ -110,3 +110,43 @@ def test_backspace_across_double_step():
     # Restoring must bring all three back.
     m.set_positions(before)
     assert m.get_positions() == before
+
+
+def test_replay_is_idempotent():
+    """replay() must not change machine state — calling it twice returns the same cipher."""
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "D", "F"))
+    before = m.get_positions()
+    c1, _, _ = m.replay("HELLO")
+    c2, _, _ = m.replay("HELLO")
+    assert c1 == c2
+    assert m.get_positions() == before
+
+
+def test_replay_matches_sequential_encode():
+    """replay() must produce the same cipher as encoding letters one by one."""
+    m1 = Enigma(rotor_names=("I", "II", "III"), positions=("Q", "E", "V"))
+    m2 = Enigma(rotor_names=("I", "II", "III"), positions=("Q", "E", "V"))
+    text = "ATTACKATDAWN"
+    cipher_replay, _, _ = m1.replay(text)
+    cipher_seq = "".join(m2.encode_letter(ch)[0] for ch in text)
+    assert cipher_replay == cipher_seq
+
+
+def test_replay_spaces_do_not_step_rotors():
+    """A space in the text must be passed through as-is without advancing the rotors."""
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "A", "A"))
+    before = m.get_positions()
+    # Replay a space-only string — nothing should step
+    cipher, snaps, _ = m.replay("   ")
+    assert cipher == "   "
+    assert m.get_positions() == before
+    # Positions after each space should be the same start position
+    assert all(s == before for s in snaps)
+
+
+def test_replay_snapshot_count():
+    """replay() returns one snapshot per character in the input."""
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "A", "A"))
+    text = "HELLO WORLD"
+    _, snaps, _ = m.replay(text)
+    assert len(snaps) == len(text)
