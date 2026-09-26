@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+**Changed — TUI rebuilt as a vim-style modal editor**
+
+The entire interactive interface has been rewritten.  F-keys and the Q quit
+binding are gone; only ordinary letter keys, ESC, BACKSPACE and SPACE are
+needed.
+
+Four modes (shown as a badge at the bottom-left of the screen):
+
+- **INSERT** (start-up mode) — type A-Z / SPACE to encipher at the cursor;
+  BACKSPACE deletes the character to the left; ESC or `` ` `` exits to NORMAL.
+- **NORMAL** — vim motion keys (h l 0 $ w b); i/a/I/A insert; x/X delete;
+  u undo; dd clear message; yy/p yank/paste; v VISUAL; : COMMAND; ? help.
+- **VISUAL** — extend a selection with motion keys; d/y/c act on it; o swaps
+  the anchor end; ESC cancels.
+- **COMMAND** — colon command line with TAB completion:
+  `:rotors` `:ring` `:pos` `:refl` `:wheel` `:etw` `:ukw`
+  `:plug add|remove|clear|on|off`
+  `:show` `:reset` `:new` `:help` `:q`
+
+The key architectural change is that the machine's positions are now a fixed
+*start key*: they never advance while typing.  Ciphertext is derived by
+replaying the text buffer from those positions on every frame, so editing
+anywhere — inserting, deleting, moving the cursor, changing a setting — always
+re-enciphers the whole message correctly from the start.
+
+**Added**
+- `Enigma.replay(text)` — enciphers a string from the current positions
+  without permanently advancing the rotors; returns cipher text, per-character
+  position snapshots and the signal path for the last letter.
+- `Message` class — text buffer with cursor, vim motion keys and undo stack.
+- `Session` class — owns the machine and the message; drives the modal state
+  machine; handles all : commands.
+- `build_exit_report()` — grouped five-letter output, supports multi-message
+  sessions (`:new` starts a new message while keeping the old one for the
+  report).
+
+**Removed**
+- F-key sub-screens (F1 help, F2 settings, F3 plugboard, F5 custom reflector).
+  All of their functionality is now available via : commands.
+
+## Unreleased
+
 **Fixed**
 - Backspace now correctly restores the exact rotor positions that existed
   before the deleted keypress, including any middle-rotor carry or
