@@ -207,6 +207,52 @@ class Enigma:
         """Restore rotor positions from a snapshot returned by get_positions."""
         self.left.position, self.middle.position, self.right.position = snapshot
 
+    def replay(self, text):
+        """Encipher *text* from the machine's current (start) positions.
+
+        The rotors are NOT permanently advanced — positions are saved before
+        the run and restored afterwards, so replay() can be called as many
+        times as needed without side-effects on the machine state.  This is
+        what makes live re-encipherment of an editable message possible: any
+        edit simply calls replay() again from the same start key.
+
+        Parameters
+        ----------
+        text : str
+            A string of A-Z letters and spaces.  Spaces are passed through
+            unchanged and do not advance the rotors.
+
+        Returns
+        -------
+        cipher : str
+            The enciphered string.  Spaces in *text* appear as spaces here,
+            aligned with the input character-for-character.
+        snapshots : list[tuple]
+            One position snapshot (as returned by get_positions()) per
+            character in *text*, taken *after* that character was processed.
+            Useful for reading back the rotor display at any point in the
+            message.
+        path : list[tuple[str, str]]
+            The signal-path list from encode_letter() for the *last
+            non-space* character in *text*, or [] if *text* is empty or
+            all spaces.
+        """
+        start = self.get_positions()
+        cipher, snapshots, path = [], [], []
+        try:
+            for ch in text:
+                if ch == " ":
+                    cipher.append(" ")
+                    snapshots.append(self.get_positions())
+                else:
+                    out, p = self.encode_letter(ch)
+                    cipher.append(out)
+                    snapshots.append(self.get_positions())
+                    path = p
+        finally:
+            self.set_positions(start)
+        return "".join(cipher), snapshots, path
+
     def step_rotors(self):
         mid_notch = self.middle.at_notch()
         right_notch = self.right.at_notch()
