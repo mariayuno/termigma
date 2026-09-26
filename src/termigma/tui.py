@@ -8,7 +8,6 @@ from .engine import (
     ALPHA, KB_ROWS, KB_INDENT, MAX_PLUGS, THIN_REFLECTORS,
     ROTOR_CHOICES, FOURTH_WHEEL_CHOICES, REFLECTOR_CHOICES,
     Rotor, FourthWheel, EntryWheel, Reflector, Plugboard, Enigma,
-    FIELD_LABEL, build_field_order, adjust_field, fmt_val,
     parse_plug_pairs, parse_reflector_pairs,
 )
 
