@@ -2,13 +2,460 @@
 in engine.py; this module only draws things and reads the keyboard."""
 
 import curses
+import os
 
 from .engine import (
     ALPHA, KB_ROWS, KB_INDENT, MAX_PLUGS, THIN_REFLECTORS,
-    Rotor, FourthWheel, Reflector, Plugboard, Enigma,
+    ROTOR_CHOICES, FOURTH_WHEEL_CHOICES, REFLECTOR_CHOICES,
+    Rotor, FourthWheel, EntryWheel, Reflector, Plugboard, Enigma,
     FIELD_LABEL, build_field_order, adjust_field, fmt_val,
     parse_plug_pairs, parse_reflector_pairs,
 )
+
+ETW_CHOICES = ("military", "commercial")
+PLUG_SUBS   = ("add", "remove", "clear", "on", "off")
+
+CANCEL_KEYS    = frozenset({27, ord("`")})
+BACKSPACE_KEYS = frozenset({curses.KEY_BACKSPACE, 127, 8})
+ARROWS = {curses.KEY_LEFT: "h", curses.KEY_RIGHT: "l",
+          curses.KEY_HOME: "0", curses.KEY_END: "$"}
+
+COMMANDS = (
+    "plug", "refl", "etw", "rotors", "ring", "pos", "wheel",
+    "ukw", "show", "reset", "new", "help", "q", "q!",
+)
+
+MODE_HINT = {
+    "INSERT":  "type A-Z / SPACE   BKSP delete   ESC or ` -> normal",
+    "NORMAL":  ("i a I A insert   x X del   u undo   dd clear   "
+                "yy/p yank/paste   v visual   : cmd   ? help"),
+    "VISUAL":  "h l 0 $ w b extend   o other end   d delete   y yank   c change   ESC cancel",
+    "COMMAND": "TAB complete   ENTER run   ESC cancel   :q to quit",
+}
+
+
+# ---------------------------------------------------------------------------
+# Message — text buffer with cursor and undo stack
+# ---------------------------------------------------------------------------
+class Message:
+    """An editable string of A-Z letters and spaces, with cursor and undo."""
+
+    def __init__(self):
+        self.text = ""
+        self.cur  = 0
+        self._hist = [("", 0)]   # (text, cursor) snapshots for undo
+
+    def _push(self):
+        self._hist.append((self.text, self.cur))
+        del self._hist[:-500]
+
+    def insert(self, s):
+        """Insert *s* at the cursor and advance past it."""
+        self._push()
+        self.text = self.text[:self.cur] + s + self.text[self.cur:]
+        self.cur += len(s)
+
+    def delete(self, a, b):
+        """Delete the half-open range [a, b) and place the cursor at *a*."""
+        self._push()
+        self.text = self.text[:a] + self.text[b:]
+        self.cur  = max(0, min(a, len(self.text)))
+
+    def undo(self):
+        """Step back through history.  Returns True if a change was undone."""
+        while self._hist:
+            t, c = self._hist.pop()
+            if t != self.text:
+                self.text, self.cur = t, min(c, len(t))
+                return True
+        return False
+
+    def move(self, k):
+        """Move the cursor by vim motion key *k* (one of h l 0 $ w b)."""
+        c, t = self.cur, self.text
+        if k == "h":   c -= 1
+        elif k == "l": c += 1
+        elif k == "0": c = 0
+        elif k == "$": c = len(t)
+        elif k == "w":
+            while c < len(t) and t[c] != " ": c += 1
+            while c < len(t) and t[c] == " ": c += 1
+        elif k == "b":
+            while c > 0 and t[c - 1] == " ": c -= 1
+            while c > 0 and t[c - 1] != " ": c -= 1
+        self.cur = max(0, min(len(t), c))
+
+
+# ---------------------------------------------------------------------------
+# Session — machine + message + vim-mode state machine
+# ---------------------------------------------------------------------------
+class Session:
+    """Machine configuration, an editable message, and the editing mode.
+
+    The machine's current positions are the *start key* — they are never
+    mutated while typing.  Ciphertext is always derived by calling
+    machine.replay(text), which re-enciphers from those fixed positions
+    without advancing them.  Any edit just calls replay() again, so the
+    displayed ciphertext stays consistent with the buffer and the key.
+    """
+
+    def __init__(self):
+        self.machine  = Enigma()
+        self.msg      = Message()
+        self.finished: list = []   # snapshots of messages closed with :new
+        self.mode     = "INSERT"
+        self.anchor   = 0          # VISUAL mode: the stationary end
+        self.cmd      = ""         # COMMAND mode: buffer being typed
+        self.pending  = ""         # NORMAL: first key of dd / yy digraph
+        self.reg      = ""         # yank register
+        self.notice   = ""         # one-line message above the status bar
+
+    # -- replay view ---------------------------------------------------------
+
+    def view(self):
+        """Return everything draw_all() needs for the current frame."""
+        t, c = self.msg.text, self.msg.cur
+        # INSERT cursor is between chars; the focused letter is the one left of it.
+        focus = min(c - 1 if self.mode == "INSERT" else c, len(t) - 1)
+        cipher, snaps, path = self.machine.replay(t)
+        pos = snaps[focus] if focus >= 0 else self.machine.get_positions()
+        lit = focus >= 0 and t[focus] != " "
+        return {
+            "cipher": cipher,
+            "pos":    pos,
+            "path":   path if lit else [],
+            "key":    t[focus]      if lit else None,
+            "out":    cipher[focus] if lit else None,
+        }
+
+    def selection(self):
+        """(start, end) of the current VISUAL selection (half-open)."""
+        a, b = sorted((self.anchor, self.msg.cur))
+        return a, min(b + 1, len(self.msg.text))
+
+    def start_new(self):
+        """Finalise the current message and open a blank one."""
+        if self.msg.text:
+            cipher, _, _ = self.machine.replay(self.msg.text)
+            self.finished.append({
+                "plain":  self.msg.text,
+                "cipher": cipher,
+                "snap":   self._machine_snapshot(),
+            })
+        self.msg  = Message()
+        self.mode = "INSERT"
+        self.notice = "New message started."
+
+    def _machine_snapshot(self):
+        m = self.machine
+        return {
+            "reflector":    m.reflector_kind,
+            "etw":          m.etw.mode,
+            "rotors":       [(w.name, w.ring_setting, w.position_letter)
+                             for w in (m.left, m.middle, m.right)],
+            "fourth":       m.fourth.name if m.fourth else None,
+            "plugboard_on": m.plugboard_enabled,
+            "plugs":        " ".join(f"{a}{b}" for a, b in m.plugboard.pairs_list()),
+        }
+
+    # -- key handling --------------------------------------------------------
+
+    def key(self, ch):
+        """Process one raw curses keycode.
+
+        Returns 'quit' or 'help' to tell the main loop what to do next,
+        or None to continue normally.
+        """
+        self.notice = ""
+        if self.mode == "COMMAND":
+            return self._key_command(ch)
+        cancel = ch in CANCEL_KEYS
+
+        if self.mode == "INSERT":
+            if cancel:
+                self.mode = "NORMAL"
+            elif ch in BACKSPACE_KEYS:
+                if self.msg.cur:
+                    self.msg.delete(self.msg.cur - 1, self.msg.cur)
+                    self.msg._hist.pop()   # delete is its own undo unit
+            elif ch == 32 or 65 <= ch <= 90 or 97 <= ch <= 122:
+                self.msg.insert(" " if ch == 32 else chr(ch).upper())
+            return None
+
+        # NORMAL / VISUAL: backspace = move left
+        if ch in BACKSPACE_KEYS:
+            ch = ord("h")
+        c = ARROWS.get(ch) or (chr(ch) if 0 < ch < 256 else "")
+
+        if self.mode == "VISUAL":
+            if cancel or c == "v":
+                self.mode = "NORMAL"
+            elif c in "hl0$wb":
+                self.msg.move(c)
+            elif c == "o":
+                self.anchor, self.msg.cur = self.msg.cur, self.anchor
+            elif c in "dxyc":
+                a, b = self.selection()
+                self.reg = self.msg.text[a:b]
+                if c == "y":
+                    self.msg.cur = a
+                    self.mode = "NORMAL"
+                    self.notice = f"Yanked {len(self.reg)} character(s)."
+                else:
+                    self.msg.delete(a, b)
+                    self.mode = "INSERT" if c == "c" else "NORMAL"
+            return None
+
+        # NORMAL
+        p, self.pending = self.pending, ""
+        if p + c == "dd":
+            self.msg._push()
+            self.msg.text, self.msg.cur = "", 0
+            self.notice = "Message cleared.  u to undo."
+        elif p + c == "yy":
+            self.reg = self.msg.text
+            self.notice = f"Yanked {len(self.msg.text)} character(s)."
+        elif c in "hl0$wb":
+            self.msg.move(c)
+        elif c == "i":
+            self.msg._push(); self.mode = "INSERT"
+        elif c == "a":
+            self.msg.cur = min(len(self.msg.text), self.msg.cur + 1)
+            self.msg._push(); self.mode = "INSERT"
+        elif c == "I":
+            self.msg.cur = 0; self.msg._push(); self.mode = "INSERT"
+        elif c == "A":
+            self.msg.cur = len(self.msg.text); self.msg._push(); self.mode = "INSERT"
+        elif c == "x":
+            if self.msg.cur < len(self.msg.text):
+                self.msg.delete(self.msg.cur, self.msg.cur + 1)
+        elif c == "X":
+            if self.msg.cur > 0:
+                self.msg.delete(self.msg.cur - 1, self.msg.cur)
+        elif c == "u":
+            if not self.msg.undo():
+                self.notice = "Already at the oldest change."
+        elif c in "dy":
+            self.pending = c
+        elif c == "p":
+            if self.reg:
+                self.msg._push()
+                self.msg.insert(self.reg)
+        elif c == "v":
+            self.mode, self.anchor = "VISUAL", self.msg.cur
+        elif c == ":":
+            self.mode, self.cmd = "COMMAND", ""
+        elif c == "?":
+            return "help"
+        return None
+
+    def _key_command(self, ch):
+        if ch in CANCEL_KEYS:
+            self.mode, self.cmd = "NORMAL", ""
+        elif ch in (10, 13, curses.KEY_ENTER):
+            cmd = self.cmd.strip()
+            self.cmd, self.mode = "", "NORMAL"
+            return self._run(cmd)
+        elif ch == 9:
+            self._tab_complete()
+        elif ch in BACKSPACE_KEYS:
+            if self.cmd:
+                self.cmd = self.cmd[:-1]
+            else:
+                self.mode = "NORMAL"
+        elif 32 <= ch < 127:
+            self.cmd += chr(ch)
+        return None
+
+    def _run(self, cmd):
+        name, _, rest = cmd.partition(" ")
+        name = name.lower()
+        args = rest.split()
+        if name in ("q", "q!", "quit", "exit", "wq"):
+            return "quit"
+        if name in ("help", "h", "?"):
+            return "help"
+        if name == "new":
+            self.start_new()
+        elif name == "reset":
+            self.machine = Enigma()
+            self.notice  = "Machine reset to defaults."
+        elif name == "show":
+            self.notice = self._fmt_summary()
+        elif name in COMMANDS:
+            try:
+                self._configure(name, args)
+                self.notice = self._fmt_summary()
+            except (ValueError, IndexError) as e:
+                self.notice = (f"{e}   " if isinstance(e, ValueError) else "") + f"usage: :{name}"
+        elif name:
+            self.notice = f"Unknown command {cmd!r}  (? for help)"
+        return None
+
+    def _configure(self, name, args):   # noqa: C901
+        m = self.machine
+
+        def need(n):
+            if len(args) < n:
+                raise IndexError
+
+        def pick_letter(v):
+            v = v.upper()
+            if v not in ALPHA:
+                raise ValueError(f"expected A-Z, got {v!r}")
+            return v
+
+        def pick_ring(v):
+            try:
+                n = int(v)
+            except ValueError:
+                n = ALPHA.index(v.upper()) + 1 if v.upper() in ALPHA else -1
+            if not (1 <= n <= 26):
+                raise ValueError(f"ring must be 1-26 or A-Z, got {v!r}")
+            return n
+
+        if name == "rotors":
+            need(3)
+            for v in args[:3]:
+                if v.upper() not in ROTOR_CHOICES:
+                    raise ValueError(f"unknown rotor {v!r}; choices: {', '.join(ROTOR_CHOICES)}")
+            rings = (m.left.ring_setting, m.middle.ring_setting, m.right.ring_setting)
+            pos   = (m.left.position_letter, m.middle.position_letter, m.right.position_letter)
+            m.left   = Rotor(args[0].upper(), rings[0], pos[0])
+            m.middle = Rotor(args[1].upper(), rings[1], pos[1])
+            m.right  = Rotor(args[2].upper(), rings[2], pos[2])
+
+        elif name == "ring":
+            need(3)
+            vals = [pick_ring(v) for v in args[:3]]
+            m.left.ring_setting, m.middle.ring_setting, m.right.ring_setting = vals
+
+        elif name == "pos":
+            s = "".join(args).upper()
+            if len(s) < 3:
+                raise IndexError
+            m.left.position   = ALPHA.index(pick_letter(s[0]))
+            m.middle.position = ALPHA.index(pick_letter(s[1]))
+            m.right.position  = ALPHA.index(pick_letter(s[2]))
+
+        elif name == "refl":
+            need(1)
+            kind = next((r for r in REFLECTOR_CHOICES if r.lower() == args[0].lower()), None)
+            if kind is None:
+                raise ValueError(f"choices: {', '.join(REFLECTOR_CHOICES)}")
+            m.reflector_kind = kind
+            m.reflector = Reflector(kind, m.custom_reflector_pairs)
+            if kind in THIN_REFLECTORS and not m.fourth:
+                m.fourth = FourthWheel("Beta")
+            elif kind not in THIN_REFLECTORS:
+                m.fourth = None
+
+        elif name == "wheel":
+            if not m.fourth:
+                raise ValueError("no 4th wheel active; use :refl B-thin first")
+            need(1)
+            wn = args[0].title()
+            if wn not in FOURTH_WHEEL_CHOICES:
+                raise ValueError(f"choices: {', '.join(FOURTH_WHEEL_CHOICES)}")
+            m.fourth = FourthWheel(wn)
+
+        elif name == "etw":
+            need(1)
+            em = args[0].lower()
+            if em not in ETW_CHOICES:
+                raise ValueError(f"choices: {', '.join(ETW_CHOICES)}")
+            m.etw = EntryWheel(em)
+
+        elif name == "ukw":
+            need(1)
+            ok, res = parse_reflector_pairs(" ".join(args).upper())
+            if not ok:
+                raise ValueError(res)
+            m.custom_reflector_pairs = res
+            m.reflector_kind = "Custom"
+            m.reflector = Reflector("Custom", res)
+
+        elif name == "plug":
+            self._configure_plug(args)
+
+        else:
+            raise ValueError(f"unknown command {name!r}")
+
+    def _configure_plug(self, args):
+        m = self.machine
+        if not args:
+            raise ValueError
+        sub  = args[0].lower()
+        toks = [a.upper() for a in args[1:]]
+        if sub == "on":
+            m.plugboard_enabled = True
+        elif sub == "off":
+            m.plugboard_enabled = False
+        elif sub == "clear":
+            m.plugboard = Plugboard(None)
+        elif sub == "add":
+            if not toks:
+                raise ValueError("add requires at least one pair")
+            current = ["".join(sorted(p)) for p in m.plugboard.pairs_list()] + toks
+            ok, res = parse_plug_pairs(" ".join(current))
+            if not ok:
+                raise ValueError(res)
+            m.plugboard = Plugboard(res)
+        elif sub == "remove":
+            if not toks:
+                raise ValueError("remove requires a pair or single letter")
+            current = ["".join(sorted(p)) for p in m.plugboard.pairs_list()]
+            for tok in toks:
+                hit = [p for p in current
+                       if (tok in p if len(tok) == 1 else set(p) == set(tok))]
+                if not hit:
+                    raise ValueError(f"cable {tok!r} not in plugboard")
+                current.remove(hit[0])
+            ok, res = parse_plug_pairs(" ".join(current))
+            if not ok:
+                raise ValueError(res)
+            m.plugboard = Plugboard(res)
+        else:
+            raise ValueError(f"unknown sub-command {sub!r}; choices: {', '.join(PLUG_SUBS)}")
+
+    def _tab_complete(self):
+        words = self.cmd.split(" ")
+        part, prev = words[-1], [w.lower() for w in words[:-1]]
+        if not prev:
+            opts = COMMANDS
+        elif len(prev) == 1:
+            opts = {
+                "plug":  PLUG_SUBS,
+                "refl":  REFLECTOR_CHOICES,
+                "etw":   ETW_CHOICES,
+                "wheel": FOURTH_WHEEL_CHOICES,
+            }.get(prev[0], ())
+        else:
+            opts = ()
+        hits = [o for o in opts if o.lower().startswith(part.lower())]
+        if not hits:
+            return
+        new = hits[0] + " " if len(hits) == 1 else os.path.commonprefix(hits)
+        if len(hits) > 1:
+            self.notice = "  ".join(hits)
+        if len(new) >= len(part):
+            self.cmd = " ".join(words[:-1] + [new])
+
+    def _fmt_summary(self):
+        m = self.machine
+        rotors = " ".join(w.name for w in (m.left, m.middle, m.right))
+        rings  = "/".join(f"{w.ring_setting:02d}" for w in (m.left, m.middle, m.right))
+        pos    = "/".join(w.position_letter for w in (m.left, m.middle, m.right))
+        fourth = f"  4th={m.fourth.name}" if m.fourth else ""
+        if m.plugboard_enabled:
+            pairs = m.plugboard.pairs_list()
+            plug  = ("on: " + " ".join(f"{a}{b}" for a, b in pairs)) if pairs else "on (no cables)"
+        else:
+            plug = "off"
+        return (
+            f"UKW {m.reflector_kind}{fourth}  etw {m.etw.mode}  "
+            f"rotors {rotors}  ring {rings}  pos {pos}  plug {plug}"
+        )
 
 
 def safe_addstr(win, y, x, text, attr=0):
