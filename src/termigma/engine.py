@@ -165,6 +165,153 @@ ALL_REFLECTOR_KEYS = list(REFLECTOR_DATA.keys()) + ["Custom"]   # model lookup
 # Tirpitz has its own entry-wheel order (distinct from military and commercial)
 _ETW_TIRPITZ = "ILXRZTKGJYAMWVDUFCPQEONSHB"
 
+# ---------------------------------------------------------------------------
+# Model presets — one dict per historical machine
+# ---------------------------------------------------------------------------
+# Each entry fully specifies the starting configuration for a model.
+# Keys match Enigma.__init__ kwargs; 'rotors' is (L, M, R) names.
+# 'locked' means :rotors/:refl/:etw refuse to change anything.
+MODELS = {
+    "i": {
+        "label": "Enigma I (Army/GAF)",
+        "rotors": ("I", "II", "III"), "reflector": "B",
+        "etw": "military", "plugboard": True,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "m3": {
+        "label": "M3 (Army/Navy)",
+        "rotors": ("I", "V", "VIII"), "reflector": "B",
+        "etw": "military", "plugboard": True,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "m4": {
+        "label": "M4 \"Shark\" (U-boats)",
+        "rotors": ("II", "IV", "I"), "reflector": "B-thin",
+        "fourth": "Beta",
+        "etw": "military", "plugboard": True,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "n": {
+        "label": "Norenigma",
+        "rotors": ("I-N", "II-N", "III-N"), "reflector": "UKW-N",
+        "etw": "military", "plugboard": True,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "s": {
+        "label": "Sondermaschine",
+        "rotors": ("I-S", "II-S", "III-S"), "reflector": "UKW-S",
+        "etw": "military", "plugboard": True,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "d": {
+        "label": "Commercial D (1926)",
+        "rotors": ("I-D", "II-D", "III-D"), "reflector": "UKW-COM",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+        # Enigma D: the turnover notch is fixed to the rotor core, not the ring.
+        # Ringstellung is therefore always trivially 01/01/01 and ring edits are
+        # blocked for this model.
+        "trivial_ring": True,
+    },
+    "k": {
+        "label": "Commercial K (1927)",
+        "rotors": ("I-D", "II-D", "III-D"), "reflector": "UKW-COM",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "swissk": {
+        "label": "Swiss-K",
+        "rotors": ("I-KS", "II-KS", "III-KS"), "reflector": "UKW-COM",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "r": {
+        "label": "Railway (KR)",
+        "rotors": ("I-KR", "II-KR", "III-KR"), "reflector": "UKW-KR",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
+    "t": {
+        "label": "Tirpitz / T (Japan)",
+        "rotors": ("I-T", "II-T", "III-T"), "reflector": "UKW-T",
+        "etw": "tirpitz", "plugboard": False,
+        "mechanism": "lever", "refl_thumb": True, "refl_rotating": False,
+        "locked": True,
+    },
+    "a28": {
+        "label": "A28/G31 Zählwerk",
+        "rotors": ("I-Z", "II-Z", "III-Z"), "reflector": "UKW-COM",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "cog", "refl_thumb": True, "refl_rotating": False,
+        "locked": True,
+    },
+    "g111": {
+        "label": "G-111",
+        "rotors": ("I-G111", "II-G111", "V-G111"), "reflector": "UKW-G312",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "cog", "refl_thumb": True, "refl_rotating": True,
+        "locked": True,
+    },
+    "g260": {
+        "label": "G-260",
+        "rotors": ("I-G260", "II-G260", "III-G260"), "reflector": "UKW-G312",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "cog", "refl_thumb": True, "refl_rotating": True,
+        "locked": True,
+    },
+    "g312": {
+        "label": "G-312",
+        "rotors": ("I-G312", "II-G312", "III-G312"), "reflector": "UKW-G312",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "cog", "refl_thumb": True, "refl_rotating": True,
+        "locked": True,
+    },
+    "custom": {
+        "label": "Custom",
+        "rotors": ("I", "II", "III"), "reflector": "B",
+        "etw": "military", "plugboard": True,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": False,
+    },
+}
+
+MODEL_ALIASES = list(MODELS.keys())   # ["i","m3","m4","n","s","d","k","swissk","r","t","a28","g111","g260","g312","custom"]
+
+
+def apply_model(machine, key):
+    """Reconfigure *machine* in-place to match the preset for *key*.
+
+    Resets rotors to the model's default types at AAA / ring 01.
+    Returns the preset dict so the caller can inspect it.
+    """
+    p = MODELS[key.lower()]
+    L, M, R = p["rotors"]
+    machine.left   = Rotor(L)
+    machine.middle = Rotor(M)
+    machine.right  = Rotor(R)
+    machine.fourth = FourthWheel(p["fourth"]) if p.get("fourth") else None
+    machine.reflector_kind = p["reflector"]
+    machine.custom_reflector_pairs = machine.custom_reflector_pairs or default_custom_pairs()
+    machine.reflector = Reflector(p["reflector"], machine.custom_reflector_pairs)
+    machine.etw = EntryWheel(p["etw"])
+    machine.plugboard_enabled = p["plugboard"]
+    machine.mechanism = p["mechanism"]
+    machine.refl_thumb = p["refl_thumb"]
+    machine.refl_rotating = p["refl_rotating"]
+    machine.model_label = p["label"]
+    machine.model_locked = p["locked"]
+    return p
+
+
 def default_custom_pairs():
     pairs = {}
     for i in range(0, 26, 2):
