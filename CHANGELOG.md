@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+**Added — 14 historical Enigma models (previously 3)**
+
+`:model <key>` switches the machine between 15 configurations.  Models
+other than `custom` are locked: `:rotors`, `:refl` and `:etw` refuse
+changes and point to `:model custom` to unlock.  `:pos`, `:ring`,
+`:plug`, `:wheel`, `:ukwpos` and `:ukwring` work on any model.
+
+| key | Machine |
+|---|---|
+| `i` | Enigma I (Army/GAF) |
+| `m3` | M3 (Army/Navy) |
+| `m4` | M4 "Shark" (U-boats), 4th wheel |
+| `n` | Norenigma |
+| `s` | Sondermaschine |
+| `d` | Commercial D (1926) — trivial Ringstellung |
+| `k` | Commercial K (1927) |
+| `swissk` | Swiss-K (Swiss Air Force) |
+| `r` | Railway (published wiring) |
+| `t` | Tirpitz / T (Japan), own ETW, adjustable UKW |
+| `a28` | A28/G31 Zählwerk — cog drive, adjustable UKW |
+| `g111` `g260` `g312` | G-series (Abwehr) — cog drive, rotating UKW |
+| `custom` | Fully unlocked; any rotor, reflector, ETW |
+
+New commands:
+- `:model <key>` — switch model (TAB completes)
+- `:ukwpos <A-Z>` — set UKW start position (thumbwheel machines only)
+- `:ukwring <1-26>` — set UKW ring setting (thumbwheel machines only)
+
+**Changed**
+
+- Cog-drive stepping: Zählwerk and G-series machines use an odometer-
+  style drive with no double-step anomaly.  On G-series, the reflector
+  rotates when all three rotors are simultaneously at their notches.
+- Adjustable UKW: Tirpitz, A28 and G-series machines have a reflector
+  with a settable start position and ring; the draw panel shows these.
+- `get_positions()` now returns a 4-tuple `(L, M, R, UKW)`.  The UKW
+  element is always 0 on non-rotating machines, so all existing code
+  that relied on a 3-tuple round-trips correctly.
+- Rotor display now uses `.label` (e.g. `I` for `I-G312`).  The model
+  name appears in the rotor panel title and the `:show` summary.
+
+## Unreleased
+
 **Changed — TUI rebuilt as a vim-style modal editor**
 
 The entire interactive interface has been rewritten.  F-keys and the Q quit
