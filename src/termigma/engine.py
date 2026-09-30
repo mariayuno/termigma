@@ -206,6 +206,7 @@ class Rotor(Wheel):
     def __init__(self, name, ring_setting=1, start_pos="A", notch_override=None):
         super().__init__(ROTOR_DATA[name]["wiring"], ring_setting, start_pos)
         self.name = name
+        self.label = ROTOR_DATA[name].get("label", name)   # display name
         self.notches = {notch_override} if notch_override else set(ROTOR_DATA[name]["notches"])
 
     def at_notch(self):
@@ -224,12 +225,23 @@ class FourthWheel(Wheel):
 
 
 class EntryWheel:
-    """Fixed (non-rotating) entry wiring. Military = straight-through.
-    Commercial = wired in QWERTZU keyboard order."""
+    """Fixed (non-rotating) entry wiring.
+
+    Modes
+    -----
+    military   straight-through (A→A, B→B, …) — Wehrmacht/Kriegsmarine
+    commercial QWERTZU keyboard order — Commercial D/K, Swiss-K, Railway
+    tirpitz    Tirpitz/T own entry-wheel wiring
+    """
 
     def __init__(self, mode="military"):
         self.mode = mode
-        order = COMMERCIAL_ETW_ORDER if mode == "commercial" else ALPHA
+        if mode == "commercial":
+            order = COMMERCIAL_ETW_ORDER
+        elif mode == "tirpitz":
+            order = _ETW_TIRPITZ
+        else:
+            order = ALPHA
         self.fwd = {order[i]: i for i in range(26)}
         self.inv = [None] * 26
         for letter, idx in self.fwd.items():
@@ -243,14 +255,37 @@ class EntryWheel:
 
 
 class Reflector:
-    def __init__(self, kind="B", custom_pairs=None):
+    """Enigma reflector (UKW).
+
+    Most reflectors are fixed.  Some machines (T, A28/G31, G-series) have a
+    reflector that can be hand-set to a start position and ring setting before
+    the session — the 'thumbwheel' UKW.  On G-series machines the reflector
+    also steps during operation (rotating UKW).  Both features are modelled
+    here via `ring_setting` and `pos`.
+    """
+
+    def __init__(self, kind="B", custom_pairs=None, ring_setting=1, pos=0):
         self.kind = kind
+        self.label = kind.replace("UKW-", "")   # display name: "UKW-T" -> "T"
         self.pairs = dict(custom_pairs) if kind == "Custom" else None
+        self.ring_setting = ring_setting
+        self.pos = pos   # current position (int 0-25); only meaningful for thumbwheel/rotating
+
+    @property
+    def position_letter(self):
+        return ALPHA[self.pos]
+
+    def step(self):
+        self.pos = (self.pos + 1) % 26
 
     def apply(self, c):
+        shift = self.pos - (self.ring_setting - 1)
+        e = (c + shift) % 26
         if self.kind == "Custom":
-            return ALPHA.index(self.pairs[ALPHA[c]])
-        return ord(REFLECTOR_DATA[self.kind][c]) - ord("A")
+            out = ALPHA.index(self.pairs[ALPHA[e]])
+        else:
+            out = ord(REFLECTOR_DATA[self.kind][e]) - ord("A")
+        return (out - shift) % 26
 
 
 class Plugboard:
@@ -276,32 +311,47 @@ class Enigma:
                  positions=("A", "A", "A"), reflector_kind="B", plug_pairs=None,
                  etw_mode="military", fourth_wheel=None, fourth_ring=1, fourth_pos="A",
                  rotor_notches=(None, None, None), custom_reflector_pairs=None,
-                 plugboard_enabled=True):
+                 plugboard_enabled=True,
+                 mechanism="lever",      # "lever" (standard) or "cog" (Zählwerk/G-series)
+                 refl_thumb=False,       # True: UKW is hand-settable (has pos + ring)
+                 refl_rotating=False,    # True: UKW steps with the rotors (G-series)
+                 refl_ring=1,            # UKW ring setting (thumbwheel machines)
+                 refl_pos="A",           # UKW start position (thumbwheel/rotating machines)
+                 model_label="Custom"):  # display name shown in the UI
         self.left = Rotor(rotor_names[0], ring_settings[0], positions[0], rotor_notches[0])
         self.middle = Rotor(rotor_names[1], ring_settings[1], positions[1], rotor_notches[1])
         self.right = Rotor(rotor_names[2], ring_settings[2], positions[2], rotor_notches[2])
         self.reflector_kind = reflector_kind
         self.custom_reflector_pairs = custom_reflector_pairs or default_custom_pairs()
-        self.reflector = Reflector(reflector_kind, self.custom_reflector_pairs)
+        self.reflector = Reflector(reflector_kind, self.custom_reflector_pairs,
+                                   refl_ring, ALPHA.index(refl_pos))
+        self.mechanism = mechanism
+        self.refl_thumb = refl_thumb         # can the operator set the UKW start?
+        self.refl_rotating = refl_rotating   # does the UKW step during operation?
         self.plugboard = Plugboard(plug_pairs)
         self.plugboard_enabled = plugboard_enabled
         self.etw = EntryWheel(etw_mode)
         self.fourth = FourthWheel(fourth_wheel, fourth_ring, fourth_pos) if fourth_wheel else None
         self.movable_notches = any(n is not None for n in rotor_notches)
+        self.model_label = model_label       # display name (e.g. "M3", "Tirpitz")
+        self.model_locked = model_label != "Custom"  # prevent :rotors/:refl/:etw edits
 
     def get_positions(self):
-        """Return a snapshot of all rotor positions as a plain tuple.
+        """Snapshot of all advancing-wheel positions as a plain tuple.
 
-        The snapshot captures only the three main rotor positions; the 4th
-        wheel (Beta/Gamma) is fixed and never steps, so there is nothing to
-        capture for it.  Useful for saving state before a keypress so that it
-        can be restored later (e.g. to undo that keypress).
+        Returns (left, middle, right, reflector) as ints.  The 4th wheel
+        (Beta/Gamma on M4) never steps so is excluded.  The reflector
+        position is included because G-series machines have a rotating UKW —
+        on all other models it is always 0 and round-trips cleanly.
         """
-        return (self.left.position, self.middle.position, self.right.position)
+        return (self.left.position, self.middle.position,
+                self.right.position, self.reflector.pos)
 
     def set_positions(self, snapshot):
-        """Restore rotor positions from a snapshot returned by get_positions."""
-        self.left.position, self.middle.position, self.right.position = snapshot
+        """Restore positions from a snapshot returned by get_positions."""
+        self.left.position, self.middle.position, self.right.position = snapshot[:3]
+        if len(snapshot) > 3:
+            self.reflector.pos = snapshot[3]
 
     def replay(self, text):
         """Encipher *text* from the machine's current (start) positions.
@@ -350,14 +400,31 @@ class Enigma:
         return "".join(cipher), snapshots, path
 
     def step_rotors(self):
-        mid_notch = self.middle.at_notch()
-        right_notch = self.right.at_notch()
-        if mid_notch:
-            self.left.step()
-            self.middle.step()
-        elif right_notch:
-            self.middle.step()
-        self.right.step()
+        L, M, R = self.left, self.middle, self.right
+        if self.mechanism == "cog":
+            # Zählwerk / G-series: odometer-style drive.  A wheel advances when
+            # every wheel to its right is currently at a notch position.  No
+            # double-step anomaly.  On G-series machines the reflector is the
+            # fourth link in the chain and rotates when all three rotors are at
+            # their notches simultaneously.
+            step_m = R.at_notch()
+            step_l = step_m and M.at_notch()
+            if step_l and L.at_notch() and self.refl_rotating:
+                self.reflector.step()
+            if step_l:
+                L.step()
+            if step_m:
+                M.step()
+        else:
+            # Standard lever (pawl) drive — Wehrmacht/Kriegsmarine.
+            # The double-step anomaly: when M is at its notch, both L and M
+            # advance on the same keypress.
+            if M.at_notch():
+                L.step()
+                M.step()
+            elif R.at_notch():
+                M.step()
+        R.step()
 
     def encode_letter(self, letter):
         self.step_rotors()
