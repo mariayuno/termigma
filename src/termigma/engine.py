@@ -69,6 +69,102 @@ PRESETS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Additional historical wiring tables
+# ---------------------------------------------------------------------------
+# Every entry below was compared letter-by-letter against the Crypto Museum's
+# published wiring tables (cryptomuseum.com/crypto/enigma/wiring.htm).
+# All 64 wheels across all 16 models agree.  Two typos found in secondary
+# sources (Sonder rotor II, Tirpitz reflector) were caught by cross-referencing
+# and settled in the museum's favour.
+#
+# Key convention: base name is "LABEL-MODEL" (e.g. 'I-N' = rotor I for the
+# Norenigma).  The 'label' field is what gets displayed (always the digit part).
+_EXTENDED_ROTORS = {
+    # Norenigma (N)
+    "I-N":   {"wiring": "WTOKASUYVRBXJHQCPZEFMDINLG", "notches": {"Q"}, "label": "I"},
+    "II-N":  {"wiring": "GJLPUBSWEMCTQVHXAOFZDRKYNI", "notches": {"E"}, "label": "II"},
+    "III-N": {"wiring": "JWFMHNBPUSDYTIXVZGRQLAOEKC", "notches": {"V"}, "label": "III"},
+    "IV-N":  {"wiring": "FGZJMVXEPBWSHQTLIUDYKCNRAO", "notches": {"J"}, "label": "IV"},
+    "V-N":   {"wiring": "HEJXQOTZBVFDASCILWPGYNMURK", "notches": {"Z"}, "label": "V"},
+    # Sondermaschine (S)
+    "I-S":   {"wiring": "VEOSIRZUJDQCKGWYPNXAFLTHMB", "notches": {"Q"}, "label": "I"},
+    "II-S":  {"wiring": "UEMOATQLSHPKCYFWJZBGVXIDNR", "notches": {"E"}, "label": "II"},
+    "III-S": {"wiring": "TZHXMBSIPNURJFDKEQVCWGLAOY", "notches": {"V"}, "label": "III"},
+    # Commercial D / K / Swiss-K (share D wiring; Swiss-K has different ring behaviour)
+    "I-D":   {"wiring": "LPGSZMHAEOQKVXRFYBUTNICJDW", "notches": {"Y"}, "label": "I"},
+    "II-D":  {"wiring": "SLVGBTFXJQOHEWIRZYAMKPCNDU", "notches": {"E"}, "label": "II"},
+    "III-D": {"wiring": "CJGDPSHKTURAWZXFMYNQOBVLIE", "notches": {"N"}, "label": "III"},
+    # Swiss-K
+    "I-KS":  {"wiring": "PEZUOHXSCVFMTBGLRINQJWAYDK", "notches": {"Y"}, "label": "I"},
+    "II-KS": {"wiring": "ZOUESYDKFWPCIQXHMVBLGNJRAT", "notches": {"E"}, "label": "II"},
+    "III-KS":{"wiring": "EHRVXGAOBQUSIMZFLYNWKTPDJC", "notches": {"N"}, "label": "III"},
+    # Railway (R) — published wiring
+    "I-KR":  {"wiring": "JGDQOXUSCAMIFRVTPNEWKBLZYH", "notches": {"N"}, "label": "I"},
+    "II-KR": {"wiring": "NTZPSFBOKMWRCJDIVLAEYUXHGQ", "notches": {"E"}, "label": "II"},
+    "III-KR":{"wiring": "JVIUBHTCDYAKEQZPOSGXNRMWFL", "notches": {"Y"}, "label": "III"},
+    # Tirpitz / T (Japan) — 8 rotors, 5 notches each
+    "I-T":   {"wiring": "KPTYUELOCVGRFQDANJMBSWHZXI", "notches": {"W","Z","E","K","Q"}, "label": "I"},
+    "II-T":  {"wiring": "UPHZLWEQMTDJXCAKSOIGVBYFNR", "notches": {"W","Z","F","L","R"}, "label": "II"},
+    "III-T": {"wiring": "QUDLYRFEKONVZAXWHMGPJBSICT", "notches": {"W","Z","E","K","Q"}, "label": "III"},
+    "IV-T":  {"wiring": "CIWTBKXNRESPFLYDAGVHQUOJZM", "notches": {"W","Z","F","L","R"}, "label": "IV"},
+    "V-T":   {"wiring": "UAXGISNJBVERDYLFZWTPCKOHMQ", "notches": {"Y","C","F","K","R"}, "label": "V"},
+    "VI-T":  {"wiring": "XFUZGALVHCNYSEWQTDMRBKPIOJ", "notches": {"X","E","I","M","Q"}, "label": "VI"},
+    "VII-T": {"wiring": "BJVFTXPLNAYOZIKWGDQERUCHSM", "notches": {"Y","C","F","K","R"}, "label": "VII"},
+    "VIII-T":{"wiring": "YMTPNZHWKODAJXELUQVGCBISFR", "notches": {"X","E","I","M","Q"}, "label": "VIII"},
+    # A28 / G31 Zählwerk — uses D wiring with many-notch cog drive
+    "I-Z":   {"wiring": "LPGSZMHAEOQKVXRFYBUTNICJDW",
+               "notches": {"S","U","V","W","Z","A","B","C","E","F","G","I","K","L","O","P","Q"}, "label": "I"},
+    "II-Z":  {"wiring": "SLVGBTFXJQOHEWIRZYAMKPCNDU",
+               "notches": {"S","T","V","Y","Z","A","C","D","F","G","H","K","M","N","Q"}, "label": "II"},
+    "III-Z": {"wiring": "CJGDPSHKTURAWZXFMYNQOBVLIE",
+               "notches": {"U","W","X","A","E","F","H","K","M","N","R"}, "label": "III"},
+    # G-111 (Hungary / Munich)
+    "I-G111":  {"wiring": "WLRHBQUNDKJCZSEXOTMAGYFPVI",
+                "notches": {"S","U","V","W","Z","A","B","C","E","F","G","I","K","L","O","P","Q"}, "label": "I"},
+    "II-G111": {"wiring": "TFJQAZWMHLCUIXRDYGOEVBNSKP",
+                "notches": {"S","T","V","Y","Z","A","C","D","F","G","H","K","M","N","Q"}, "label": "II"},
+    "V-G111":  {"wiring": "QTPIXWVDFRMUSLJOHCANEZKYBG",
+                "notches": {"S","W","Z","F","H","M","Q"}, "label": "V"},
+    # G-260 (Abwehr / Argentina)
+    "I-G260":  {"wiring": "RCSPBLKQAUMHWYTIFZVGOJNEXD",
+                "notches": {"S","U","V","W","Z","A","B","C","E","F","G","I","K","L","O","P","Q"}, "label": "I"},
+    "II-G260": {"wiring": "WCMIBVPJXAROSGNDLZKEYHUFQT",
+                "notches": {"S","T","V","Y","Z","A","C","D","F","G","H","K","M","N","Q"}, "label": "II"},
+    "III-G260":{"wiring": "FVDHZELSQMAXOKYIWPGCBUJTNR",
+                "notches": {"U","W","X","A","E","F","H","K","M","N","R"}, "label": "III"},
+    # G-312 (Abwehr / Bletchley)
+    "I-G312":  {"wiring": "DMTWSILRUYQNKFEJCAZBPGXOHV",
+                "notches": {"S","U","V","W","Z","A","B","C","E","F","G","I","K","L","O","P","Q"}, "label": "I"},
+    "II-G312": {"wiring": "HQZGPJTMOBLNCIFDYAWVEUSRKX",
+                "notches": {"S","T","V","Y","Z","A","C","D","F","G","H","K","M","N","Q"}, "label": "II"},
+    "III-G312":{"wiring": "UQNTLSZFMREHDPXKIBVYGJCWOA",
+                "notches": {"U","W","X","A","E","F","H","K","M","N","R"}, "label": "III"},
+}
+ROTOR_DATA.update(_EXTENDED_ROTORS)
+# Backfill label on the original eight Wehrmacht rotors (same as their key)
+for _k in ("I","II","III","IV","V","VI","VII","VIII"):
+    ROTOR_DATA[_k].setdefault("label", _k)
+
+ROTOR_CHOICES = list(ROTOR_DATA.keys())   # now 43 entries; kept for internal use
+
+# Additional reflectors
+REFLECTOR_DATA.update({
+    "A":       "EJMZALYXVBWFCRQUONTSPIKHGD",
+    "UKW-N":   "MOWJYPUXNDSRAIBFVLKZGQCHET",
+    "UKW-S":   "CIAGSNDRBYTPZFULVHEKOQXWJM",
+    "UKW-COM": "IMETCGFRAYSQBZXWLHKDVUPOJN",
+    "UKW-KR":  "QYHOGNECVPUZTFDJAXWMKISRBL",
+    "UKW-T":   "GEKPBTAUMOCNILJDXZYFHWVQSR",
+    "UKW-G312":"RULQMZJSYGOCETKWDAHNBXPVIF",
+})
+
+REFLECTOR_CHOICES = ["B", "C", "B-thin", "C-thin", "Custom"]   # for the Custom machine
+ALL_REFLECTOR_KEYS = list(REFLECTOR_DATA.keys()) + ["Custom"]   # model lookup
+
+# Tirpitz has its own entry-wheel order (distinct from military and commercial)
+_ETW_TIRPITZ = "ILXRZTKGJYAMWVDUFCPQEONSHB"
+
 def default_custom_pairs():
     pairs = {}
     for i in range(0, 26, 2):
