@@ -231,3 +231,54 @@ def test_replay_with_thumbwheel_ukw():
     c2, _, _ = m.replay("HELLO")
     assert c1 == c2
     assert m.get_positions() == before
+
+
+# ---------------------------------------------------------------------------
+# v7 extensions: locking, R°, duplicate rotors
+# ---------------------------------------------------------------------------
+def test_locked_wheel_does_not_step():
+    """A wheel in the locked set must not advance on keypress."""
+    from termigma.engine import Enigma
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "A", "V"))
+    m.locked.add("R")
+    right_before = m.right.position
+    m.encode_letter("A")
+    assert m.right.position == right_before, "locked right rotor must not step"
+
+
+def test_lock_off_clears_all():
+    """Clearing the lock set re-enables all wheels."""
+    from termigma.engine import Enigma
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("A", "A", "V"))
+    m.locked = {"L", "M", "R"}
+    m.locked.clear()
+    right_before = m.right.position
+    m.encode_letter("A")
+    assert m.right.position != right_before, "cleared right rotor must step normally"
+
+
+def test_r0_model_distinct_from_r():
+    """R° wiring must differ from the published KR wiring on at least one position."""
+    from termigma.engine import ROTOR_DATA
+    assert ROTOR_DATA["I-R0"]["wiring"] != ROTOR_DATA["I-KR"]["wiring"]
+    assert ROTOR_DATA["II-R0"]["wiring"] != ROTOR_DATA["II-KR"]["wiring"]
+    assert ROTOR_DATA["III-R0"]["wiring"] != ROTOR_DATA["III-KR"]["wiring"]
+
+
+def test_duplicate_rotor_types_allowed():
+    """Three rotors of the same type must encode and decode correctly (reciprocal)."""
+    from termigma.engine import Enigma
+    m1 = Enigma(rotor_names=("VI", "VI", "VI"), positions=("A", "A", "A"))
+    m2 = Enigma(rotor_names=("VI", "VI", "VI"), positions=("A", "A", "A"))
+    cipher, _, _ = m1.replay("HELLO")
+    plain, _, _  = m2.replay(cipher)
+    assert plain.replace(" ", "") == "HELLO"
+
+
+def test_apply_model_clears_locks():
+    """Switching model must reset the locked set."""
+    from termigma.engine import Enigma, apply_model
+    m = Enigma()
+    m.locked = {"L", "R"}
+    apply_model(m, "m3")
+    assert m.locked == set()
