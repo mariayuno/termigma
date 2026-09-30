@@ -21,7 +21,7 @@ ARROWS = {curses.KEY_LEFT: "h", curses.KEY_RIGHT: "l",
 
 COMMANDS = (
     "model", "plug", "refl", "etw", "rotors", "ring", "pos", "wheel",
-    "ukw", "ukwpos", "ukwring", "show", "reset", "new", "help", "q", "q!",
+    "ukw", "ukwpos", "ukwring", "lock", "show", "reset", "new", "help", "q", "q!",
 )
 
 MODE_HINT = {
@@ -411,6 +411,24 @@ class Session:
         else:
             raise ValueError(f"unknown command {name!r}")
 
+    def _lock(self, args):
+        """Toggle or clear wheel locks.  :lock L|M|R|UKW toggles; :lock off clears all."""
+        m = self.machine
+        if not args:
+            raise ValueError("usage: :lock L|M|R|UKW  or  :lock off")
+        tok = args[0].upper()
+        if tok == "OFF":
+            m.locked.clear()
+            self.notice = "All wheels unlocked."
+            return
+        if tok not in ("L", "M", "R", "UKW"):
+            raise ValueError("choices: L  M  R  UKW  off")
+        if tok == "UKW" and not m.refl_rotating:
+            raise ValueError("UKW lock only applies to rotating-reflector models (G-series)")
+        m.locked.symmetric_difference_update({tok})
+        state = "locked" if tok in m.locked else "unlocked"
+        self.notice = f"Rotor {tok} {state}."
+
     def _configure_plug(self, args):
         m = self.machine
         if not args:
@@ -460,6 +478,7 @@ class Session:
                 "refl":  REFLECTOR_CHOICES,
                 "etw":   ETW_CHOICES,
                 "wheel": FOURTH_WHEEL_CHOICES,
+                "lock":  ("L", "M", "R", "UKW", "off"),
             }.get(prev[0], ())
         else:
             opts = ()
@@ -468,7 +487,13 @@ class Session:
             return
         new = hits[0] + " " if len(hits) == 1 else os.path.commonprefix(hits)
         if len(hits) > 1:
-            self.notice = "  ".join(hits)
+            if prev and prev[0] == "model":
+                from .engine import MODELS as _M
+                self.notice = "  ".join(
+                    f"{o}={_M[o]['label']}" if o in _M else o for o in hits
+                )
+            else:
+                self.notice = "  ".join(hits)
         if len(new) >= len(part):
             self.cmd = " ".join(words[:-1] + [new])
 
@@ -487,9 +512,10 @@ class Session:
         else:
             plug = "off"
         model_tag = f"[{m.model_label}]  " if m.model_label != "Custom" else ""
+        lock_str = ("  locked " + " ".join(sorted(m.locked))) if m.locked else ""
         return (
             f"{model_tag}UKW {m.reflector.label}{ukw_extra}{fourth}  "
-            f"etw {m.etw.mode}  rotors {rotors}  ring {rings}  pos {pos}  plug {plug}"
+            f"etw {m.etw.mode}  rotors {rotors}  ring {rings}  pos {pos}  plug {plug}{lock_str}"
         )
 
 
@@ -607,6 +633,7 @@ def draw_all(stdscr, session):
                 f"UKW: {ukw_label}{ukw_extra:<18}"
                 f"ETW: {machine.etw.mode:<14}"
                 f"Plug: {'on' if machine.plugboard_enabled else 'off'}{mech_tag}")
+    _lock_key = {"LEFT": "L", "MID": "M", "RIGHT": "R"}
     cols = []
     if machine.fourth:
         cols.append(("4TH", machine.fourth, machine.fourth.position))
@@ -615,7 +642,8 @@ def draw_all(stdscr, session):
         pos = {"LEFT": v["pos"][0], "MID": v["pos"][1], "RIGHT": v["pos"][2]}[lb]
         cols.append((lb, wh, pos))
     for i, (label, wheel, pos) in enumerate(cols):
-        draw_wheel_panel(stdscr, ry + 2, 4 + i * 14, label, wheel, c_border, c_lamp)
+        disp = label + ("*" if _lock_key.get(label) in machine.locked else "")
+        draw_wheel_panel(stdscr, ry + 2, 4 + i * 14, disp, wheel, c_border, c_lamp)
 
     # keyboard
     ky = 13
@@ -681,7 +709,13 @@ def draw_all(stdscr, session):
     # footer
     fy = h - 2
     if session.notice:
-        safe_addstr(stdscr, fy - 1, 2, session.notice[:w - 4], curses.A_BOLD)
+        import textwrap as _tw
+        _lines = _tw.wrap(session.notice, max(20, w - 4)) or [session.notice]
+        _cap = 3
+        if len(_lines) > _cap:
+            _lines = _lines[:_cap - 1] + [f"... ({len(_lines) - _cap + 1} more)"]
+        for _i, _ln in enumerate(_lines):
+            safe_addstr(stdscr, fy - len(_lines) + _i, 2, _ln, curses.A_BOLD)
     safe_addstr(stdscr, fy, 0, "-" * w, c_dim)
     if session.mode == "COMMAND":
         safe_addstr(stdscr, fy + 1, 2, ":" + session.cmd, curses.A_BOLD)
