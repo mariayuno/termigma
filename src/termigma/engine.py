@@ -322,6 +322,7 @@ def apply_model(machine, key):
     machine.refl_rotating = p["refl_rotating"]
     machine.model_label = p["label"]
     machine.model_locked = p["locked"]
+    machine.locked = set()   # clear any previous wheel locks on model switch
     return p
 
 
@@ -495,6 +496,7 @@ class Enigma:
         self.movable_notches = any(n is not None for n in rotor_notches)
         self.model_label = model_label       # display name (e.g. "M3", "Tirpitz")
         self.model_locked = model_label != "Custom"  # prevent :rotors/:refl/:etw edits
+        self.locked: set = set()   # wheels decoupled from the drivetrain: subset of {L, M, R, UKW}
 
     def get_positions(self):
         """Snapshot of all advancing-wheel positions as a plain tuple.
@@ -561,30 +563,34 @@ class Enigma:
 
     def step_rotors(self):
         L, M, R = self.left, self.middle, self.right
+        lk = self.locked
+
+        def do_step(wheel, key):
+            """Advance *wheel* unless it has been decoupled from the drive."""
+            if key not in lk:
+                wheel.step()
+
         if self.mechanism == "cog":
-            # Zählwerk / G-series: odometer-style drive.  A wheel advances when
-            # every wheel to its right is currently at a notch position.  No
-            # double-step anomaly.  On G-series machines the reflector is the
-            # fourth link in the chain and rotates when all three rotors are at
-            # their notches simultaneously.
+            # Zählwerk / G-series: odometer-style drive — a wheel advances when
+            # every wheel to its right is at a notch.  No double-step anomaly.
+            # G-series also has a rotating UKW in the chain.
             step_m = R.at_notch()
             step_l = step_m and M.at_notch()
-            if step_l and L.at_notch() and self.refl_rotating:
+            if step_l and L.at_notch() and self.refl_rotating and "UKW" not in lk:
                 self.reflector.step()
             if step_l:
-                L.step()
+                do_step(L, "L")
             if step_m:
-                M.step()
+                do_step(M, "M")
         else:
             # Standard lever (pawl) drive — Wehrmacht/Kriegsmarine.
-            # The double-step anomaly: when M is at its notch, both L and M
-            # advance on the same keypress.
+            # Double-step anomaly: M at its notch advances both L and M.
             if M.at_notch():
-                L.step()
-                M.step()
+                do_step(L, "L")
+                do_step(M, "M")
             elif R.at_notch():
-                M.step()
-        R.step()
+                do_step(M, "M")
+        do_step(R, "R")
 
     def encode_letter(self, letter):
         self.step_rotors()
