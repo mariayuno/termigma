@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+**Added**
+
+- **`:model r0`** — R° (authentic Railway wiring, physically measured by
+  Patrick Hayes 2023, confirmed by Detlev Gross).  Distinct from the older
+  cryptanalytically-theorised KR tables.  Includes a settable UKW start
+  position (`:ukwpos`).
+
+- **`:lock L|M|R|UKW`** — decouple a wheel from the drive train so it never
+  steps, regardless of notch state.  Toggling the same key unlocks it.
+  `:lock off` clears all locks at once.  Locked wheels are shown with a
+  trailing `*` in the rotor panel (e.g. `LEFT*`).  UKW locking is only
+  available on rotating-reflector (G-series) models.
+
+- **Duplicate rotor types** — the same rotor type may now appear in all three
+  positions (e.g. `VI VI VI`), matching the behaviour of real machines and
+  reference simulators.
+
+- **UKW-G312 in Custom mode** — the G-series reflector is now selectable
+  from `:refl` on the Custom machine.
+
+- **Tirpitz ETW in Custom mode** — `:etw tirpitz` is now available on the
+  Custom machine, not only via `:model t`.
+
+- **Five-letter groups** — the message panel now shows a live Groups row
+  beneath the cipher line, scrolled to keep the most recent groups visible.
+
+- **Notice wrapping** — long notices (TAB-completion lists, multi-option
+  errors) wrap across up to three lines rather than being silently clipped.
+
+- **`:model` TAB completion** now shows the model label alongside the alias
+  key so operators can find presets without memorising all 15 keys.
+
+## Unreleased
+
 **Added — 14 historical Enigma models (previously 3)**
 
 `:model <key>` switches the machine between 15 configurations.  Models
