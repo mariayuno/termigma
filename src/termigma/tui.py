@@ -6,9 +6,9 @@ import os
 
 from .engine import (
     ALPHA, KB_ROWS, KB_INDENT, MAX_PLUGS, THIN_REFLECTORS,
-    ROTOR_CHOICES, FOURTH_WHEEL_CHOICES, REFLECTOR_CHOICES,
+    ROTOR_CHOICES, FOURTH_WHEEL_CHOICES, REFLECTOR_CHOICES, MODEL_ALIASES,
     Rotor, FourthWheel, EntryWheel, Reflector, Plugboard, Enigma,
-    parse_plug_pairs, parse_reflector_pairs,
+    parse_plug_pairs, parse_reflector_pairs, apply_model,
 )
 
 ETW_CHOICES = ("military", "commercial")
@@ -20,8 +20,8 @@ ARROWS = {curses.KEY_LEFT: "h", curses.KEY_RIGHT: "l",
           curses.KEY_HOME: "0", curses.KEY_END: "$"}
 
 COMMANDS = (
-    "plug", "refl", "etw", "rotors", "ring", "pos", "wheel",
-    "ukw", "show", "reset", "new", "help", "q", "q!",
+    "model", "plug", "refl", "etw", "rotors", "ring", "pos", "wheel",
+    "ukw", "ukwpos", "ukwring", "show", "reset", "new", "help", "q", "q!",
 )
 
 MODE_HINT = {
@@ -313,11 +313,26 @@ class Session:
                 raise ValueError(f"ring must be 1-26 or A-Z, got {v!r}")
             return n
 
-        if name == "rotors":
+        def locked(what):
+            raise ValueError(
+                f":{what} is not available on a locked model; use :model custom to unlock"
+            )
+
+        if name == "model":
+            need(1)
+            key = args[0].lower()
+            if key not in MODEL_ALIASES:
+                raise ValueError(f"unknown model {args[0]!r}; choices: {', '.join(MODEL_ALIASES)}")
+            apply_model(m, key)
+            return  # summary already shows the new model
+
+        elif name == "rotors":
+            if m.model_locked:
+                locked("rotors")
             need(3)
             for v in args[:3]:
                 if v.upper() not in ROTOR_CHOICES:
-                    raise ValueError(f"unknown rotor {v!r}; choices: {', '.join(ROTOR_CHOICES)}")
+                    raise ValueError(f"unknown rotor {v!r}")
             rings = (m.left.ring_setting, m.middle.ring_setting, m.right.ring_setting)
             pos   = (m.left.position_letter, m.middle.position_letter, m.right.position_letter)
             m.left   = Rotor(args[0].upper(), rings[0], pos[0])
@@ -338,6 +353,8 @@ class Session:
             m.right.position  = ALPHA.index(pick_letter(s[2]))
 
         elif name == "refl":
+            if m.model_locked:
+                locked("refl")
             need(1)
             kind = next((r for r in REFLECTOR_CHOICES if r.lower() == args[0].lower()), None)
             if kind is None:
@@ -359,11 +376,25 @@ class Session:
             m.fourth = FourthWheel(wn)
 
         elif name == "etw":
+            if m.model_locked:
+                locked("etw")
             need(1)
             em = args[0].lower()
             if em not in ETW_CHOICES:
                 raise ValueError(f"choices: {', '.join(ETW_CHOICES)}")
             m.etw = EntryWheel(em)
+
+        elif name == "ukwpos":
+            if not m.refl_thumb:
+                raise ValueError("this model's UKW is not settable; use :model t|a28|g111|g260|g312")
+            need(1)
+            m.reflector.pos = ALPHA.index(pick_letter(args[0]))
+
+        elif name == "ukwring":
+            if not m.refl_thumb:
+                raise ValueError("this model's UKW is not settable; use :model t|a28|g111|g260|g312")
+            need(1)
+            m.reflector.ring_setting = pick_ring(args[0])
 
         elif name == "ukw":
             need(1)
@@ -424,6 +455,7 @@ class Session:
             opts = COMMANDS
         elif len(prev) == 1:
             opts = {
+                "model": MODEL_ALIASES,
                 "plug":  PLUG_SUBS,
                 "refl":  REFLECTOR_CHOICES,
                 "etw":   ETW_CHOICES,
@@ -442,18 +474,22 @@ class Session:
 
     def _fmt_summary(self):
         m = self.machine
-        rotors = " ".join(w.name for w in (m.left, m.middle, m.right))
+        rotors = " ".join(w.label for w in (m.left, m.middle, m.right))
         rings  = "/".join(f"{w.ring_setting:02d}" for w in (m.left, m.middle, m.right))
         pos    = "/".join(w.position_letter for w in (m.left, m.middle, m.right))
         fourth = f"  4th={m.fourth.name}" if m.fourth else ""
+        ukw_extra = ""
+        if m.refl_thumb:
+            ukw_extra = f" pos={m.reflector.position_letter} ring={m.reflector.ring_setting:02d}"
         if m.plugboard_enabled:
             pairs = m.plugboard.pairs_list()
             plug  = ("on: " + " ".join(f"{a}{b}" for a, b in pairs)) if pairs else "on (no cables)"
         else:
             plug = "off"
+        model_tag = f"[{m.model_label}]  " if m.model_label != "Custom" else ""
         return (
-            f"UKW {m.reflector_kind}{fourth}  etw {m.etw.mode}  "
-            f"rotors {rotors}  ring {rings}  pos {pos}  plug {plug}"
+            f"{model_tag}UKW {m.reflector.label}{ukw_extra}{fourth}  "
+            f"etw {m.etw.mode}  rotors {rotors}  ring {rings}  pos {pos}  plug {plug}"
         )
 
 
@@ -557,11 +593,20 @@ def draw_all(stdscr, session):
 
     # rotor panel
     ry = 2
-    draw_box(stdscr, ry, 2, 10, 60, "ROTORS", c_border)
+    model_tag = f"  [{machine.model_label}]" if machine.model_label != "Custom" else ""
+    panel_title = f"ROTORS{model_tag}"
+    draw_box(stdscr, ry, 2, 11, 60, panel_title, c_border)
+    ukw_label = machine.reflector.label
+    ukw_extra = ""
+    if machine.refl_thumb:
+        ukw_extra = (f" pos={machine.reflector.position_letter}"
+                     f" ring={machine.reflector.ring_setting:02d}"
+                     f"{'  rotating' if machine.refl_rotating else ''}")
+    mech_tag = "  cog drive" if machine.mechanism == "cog" else ""
     safe_addstr(stdscr, ry + 1, 4,
-                f"Reflector: {machine.reflector_kind:<9}"
-                f"ETW: {machine.etw.mode:<12}"
-                f"Plugboard: {'ON' if machine.plugboard_enabled else 'OFF'}")
+                f"UKW: {ukw_label}{ukw_extra:<18}"
+                f"ETW: {machine.etw.mode:<14}"
+                f"Plug: {'on' if machine.plugboard_enabled else 'off'}{mech_tag}")
     cols = []
     if machine.fourth:
         cols.append(("4TH", machine.fourth, machine.fourth.position))
