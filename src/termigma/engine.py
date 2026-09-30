@@ -91,10 +91,19 @@ _EXTENDED_ROTORS = {
     "I-S":   {"wiring": "VEOSIRZUJDQCKGWYPNXAFLTHMB", "notches": {"Q"}, "label": "I"},
     "II-S":  {"wiring": "UEMOATQLSHPKCYFWJZBGVXIDNR", "notches": {"E"}, "label": "II"},
     "III-S": {"wiring": "TZHXMBSIPNURJFDKEQVCWGLAOY", "notches": {"V"}, "label": "III"},
-    # Commercial D / K / Swiss-K (share D wiring; Swiss-K has different ring behaviour)
-    "I-D":   {"wiring": "LPGSZMHAEOQKVXRFYBUTNICJDW", "notches": {"Y"}, "label": "I"},
-    "II-D":  {"wiring": "SLVGBTFXJQOHEWIRZYAMKPCNDU", "notches": {"E"}, "label": "II"},
-    "III-D": {"wiring": "CJGDPSHKTURAWZXFMYNQOBVLIE", "notches": {"N"}, "label": "III"},
+    # Commercial D / K / Swiss-K (share D wiring).
+    # Enigma D has "trivial Ringstellung": the notch is fixed to the rotor core, not
+    # the ring, so the effective turnover letter does NOT shift with the ring setting.
+    # (Confirmed from Palloks' own reference documentation; his simulator had the same
+    # bug before a 2021 fix.  See DATA.md §5 for the full account.)
+    "I-D":   {"wiring": "LPGSZMHAEOQKVXRFYBUTNICJDW", "notches": {"Z"}, "label": "I",  "trivial_rs": True},
+    "II-D":  {"wiring": "SLVGBTFXJQOHEWIRZYAMKPCNDU", "notches": {"Z"}, "label": "II", "trivial_rs": True},
+    "III-D": {"wiring": "CJGDPSHKTURAWZXFMYNQOBVLIE", "notches": {"Z"}, "label": "III","trivial_rs": True},
+    # KD — K wiring (same as D) plus a rewirable UKW-D; separate entries so the
+    # trivial_rs flag does NOT apply (KD did not inherit Enigma D's notch quirk).
+    "I-K":   {"wiring": "LPGSZMHAEOQKVXRFYBUTNICJDW", "notches": {"Y"}, "label": "I"},
+    "II-K":  {"wiring": "SLVGBTFXJQOHEWIRZYAMKPCNDU", "notches": {"E"}, "label": "II"},
+    "III-K": {"wiring": "CJGDPSHKTURAWZXFMYNQOBVLIE", "notches": {"N"}, "label": "III"},
     # Swiss-K
     "I-KS":  {"wiring": "PEZUOHXSCVFMTBGLRINQJWAYDK", "notches": {"Y"}, "label": "I"},
     "II-KS": {"wiring": "ZOUESYDKFWPCIQXHMVBLGNJRAT", "notches": {"E"}, "label": "II"},
@@ -218,7 +227,7 @@ MODELS = {
         "label": "Commercial D (1926)",
         "rotors": ("I-D", "II-D", "III-D"), "reflector": "UKW-COM",
         "etw": "commercial", "plugboard": False,
-        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "mechanism": "lever", "refl_thumb": True, "refl_rotating": False,
         "locked": True,
         # Enigma D: the turnover notch is fixed to the rotor core, not the ring.
         # Ringstellung is therefore always trivially 01/01/01 and ring edits are
@@ -227,9 +236,9 @@ MODELS = {
     },
     "k": {
         "label": "Commercial K (1927)",
-        "rotors": ("I-D", "II-D", "III-D"), "reflector": "UKW-COM",
+        "rotors": ("I-K", "II-K", "III-K"), "reflector": "UKW-COM",
         "etw": "commercial", "plugboard": False,
-        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "mechanism": "lever", "refl_thumb": True, "refl_rotating": False,
         "locked": True,
     },
     "swissk": {
@@ -281,6 +290,13 @@ MODELS = {
         "mechanism": "cog", "refl_thumb": True, "refl_rotating": True,
         "locked": True,
     },
+    "kd": {
+        "label": "KD (rewirable UKW-D)",
+        "rotors": ("I-K", "II-K", "III-K"), "reflector": "Custom",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "lever", "refl_thumb": False, "refl_rotating": False,
+        "locked": True,
+    },
     "r0": {
         "label": "R\u00b0 (authentic Railway wiring)",
         "rotors": ("I-R0", "II-R0", "III-R0"), "reflector": "UKW-R0",
@@ -326,6 +342,22 @@ def apply_model(machine, key):
     return p
 
 
+def default_kd_pairs():
+    """KD ships a placeholder UKW-D wiring (the only fixed contact is B<->O, which
+    is enforced by the real machine's construction).  Operators are expected to supply
+    their own wiring via :ukw / --ukw; this placeholder keeps the machine functional
+    out of the box while making clear that any KD message it produces is not
+    historically authentic until a real wiring is loaded."""
+    # Minimal valid reflector: B<->O fixed, remaining 24 letters in identity pairs.
+    # This is NOT the historical wiring — no verified source has been found for it.
+    remaining = [c for c in ALPHA if c not in "BO"]
+    pairs = {"B": "O", "O": "B"}
+    for i in range(0, len(remaining), 2):
+        pairs[remaining[i]] = remaining[i + 1]
+        pairs[remaining[i + 1]] = remaining[i]
+    return pairs
+
+
 def default_custom_pairs():
     pairs = {}
     for i in range(0, 26, 2):
@@ -368,7 +400,18 @@ class Rotor(Wheel):
         super().__init__(ROTOR_DATA[name]["wiring"], ring_setting, start_pos)
         self.name = name
         self.label = ROTOR_DATA[name].get("label", name)   # display name
-        self.notches = {notch_override} if notch_override else set(ROTOR_DATA[name]["notches"])
+        if notch_override:
+            self.notches = {notch_override}
+        elif ROTOR_DATA[name].get("trivial_rs"):
+            # Enigma D: the notch is fixed to the rotor body, not the ring.
+            # The effective turnover letter does not shift when ring_setting changes.
+            # All other rotors: notch shifts with the ring (standard behaviour).
+            # "Trivial Ringstellung": notch and wiring are fixed to each other, so the
+            # notch window-letter shifts FORWARD with the ring setting (ring A -> Z, ring B -> A…)
+            self.notches = {ALPHA[(ALPHA.index(n) + ring_setting - 1) % 26]
+                            for n in ROTOR_DATA[name]["notches"]}
+        else:
+            self.notches = set(ROTOR_DATA[name]["notches"])
 
     def at_notch(self):
         return self.position_letter in self.notches
