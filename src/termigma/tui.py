@@ -11,7 +11,7 @@ from .engine import (
     parse_plug_pairs, parse_reflector_pairs, apply_model,
 )
 
-ETW_CHOICES = ("military", "commercial")
+ETW_CHOICES = ("military", "commercial", "tirpitz")
 PLUG_SUBS   = ("add", "remove", "clear", "on", "off")
 
 CANCEL_KEYS    = frozenset({27, ord("`")})

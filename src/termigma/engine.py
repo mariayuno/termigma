@@ -133,6 +133,11 @@ _EXTENDED_ROTORS = {
                 "notches": {"S","T","V","Y","Z","A","C","D","F","G","H","K","M","N","Q"}, "label": "II"},
     "III-G260":{"wiring": "FVDHZELSQMAXOKYIWPGCBUJTNR",
                 "notches": {"U","W","X","A","E","F","H","K","M","N","R"}, "label": "III"},
+    # R° — physically-measured Railway wiring (Hayes 2023, confirmed by Gross).
+    # Distinct from the older cryptanalytically-theorized 'KR' wiring above.
+    "I-R0":   {"wiring": "EVLPKUDJHTGSZFRABWYICOXNMQ", "notches": {"N"}, "label": "I"},
+    "II-R0":  {"wiring": "HXMQKGJTSCZFLBERNAWYIDOVPU", "notches": {"E"}, "label": "II"},
+    "III-R0": {"wiring": "JHDBSKYPZNMVXURECLIGQOAWTF", "notches": {"Y"}, "label": "III"},
     # G-312 (Abwehr / Bletchley)
     "I-G312":  {"wiring": "DMTWSILRUYQNKFEJCAZBPGXOHV",
                 "notches": {"S","U","V","W","Z","A","B","C","E","F","G","I","K","L","O","P","Q"}, "label": "I"},
@@ -157,9 +162,10 @@ REFLECTOR_DATA.update({
     "UKW-KR":  "QYHOGNECVPUZTFDJAXWMKISRBL",
     "UKW-T":   "GEKPBTAUMOCNILJDXZYFHWVQSR",
     "UKW-G312":"RULQMZJSYGOCETKWDAHNBXPVIF",
+    "UKW-R0":  "DNSAJQIPGEXRWBVHFLCZYOMKUT",
 })
 
-REFLECTOR_CHOICES = ["B", "C", "B-thin", "C-thin", "Custom"]   # for the Custom machine
+REFLECTOR_CHOICES = ["B", "C", "B-thin", "C-thin", "UKW-G312", "Custom"]   # for the Custom machine
 ALL_REFLECTOR_KEYS = list(REFLECTOR_DATA.keys()) + ["Custom"]   # model lookup
 
 # Tirpitz has its own entry-wheel order (distinct from military and commercial)
@@ -273,6 +279,13 @@ MODELS = {
         "rotors": ("I-G312", "II-G312", "III-G312"), "reflector": "UKW-G312",
         "etw": "commercial", "plugboard": False,
         "mechanism": "cog", "refl_thumb": True, "refl_rotating": True,
+        "locked": True,
+    },
+    "r0": {
+        "label": "R\u00b0 (authentic Railway wiring)",
+        "rotors": ("I-R0", "II-R0", "III-R0"), "reflector": "UKW-R0",
+        "etw": "commercial", "plugboard": False,
+        "mechanism": "lever", "refl_thumb": True, "refl_rotating": False,
         "locked": True,
     },
     "custom": {
