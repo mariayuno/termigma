@@ -6,12 +6,11 @@ import os
 
 from .engine import (
     ALPHA, KB_ROWS, KB_INDENT, MAX_PLUGS, THIN_REFLECTORS,
-    ROTOR_CHOICES, FOURTH_WHEEL_CHOICES, REFLECTOR_CHOICES, MODEL_ALIASES,
+    ROTOR_CHOICES, FOURTH_WHEEL_CHOICES, REFLECTOR_CHOICES, ETW_CHOICES, MODEL_ALIASES,
     Rotor, FourthWheel, EntryWheel, Reflector, Plugboard, Enigma,
     parse_plug_pairs, parse_reflector_pairs, apply_model,
 )
 
-ETW_CHOICES = ("military", "commercial", "tirpitz")
 PLUG_SUBS   = ("add", "remove", "clear", "on", "off")
 
 CANCEL_KEYS    = frozenset({27, ord("`")})
@@ -21,7 +20,7 @@ ARROWS = {curses.KEY_LEFT: "h", curses.KEY_RIGHT: "l",
 
 COMMANDS = (
     "model", "plug", "refl", "etw", "rotors", "ring", "pos", "wheel",
-    "ukw", "ukwpos", "ukwring", "lock", "show", "reset", "new", "help", "q", "q!",
+    "ukw", "ukwpos", "ukwring", "lock", "live", "show", "reset", "new", "help", "q", "q!",
 )
 
 MODE_HINT = {
@@ -98,8 +97,8 @@ class Session:
     displayed ciphertext stays consistent with the buffer and the key.
     """
 
-    def __init__(self):
-        self.machine  = Enigma()
+    def __init__(self, machine=None):
+        self.machine  = machine if machine is not None else Enigma()
         self.msg      = Message()
         self.finished: list = []   # snapshots of messages closed with :new
         self.mode     = "INSERT"
@@ -108,6 +107,7 @@ class Session:
         self.pending  = ""         # NORMAL: first key of dd / yy digraph
         self.reg      = ""         # yank register
         self.notice   = ""         # one-line message above the status bar
+        self.live     = False      # show live vertical trace panel
 
     # -- replay view ---------------------------------------------------------
 
@@ -244,7 +244,11 @@ class Session:
             self.mode, self.anchor = "VISUAL", self.msg.cur
         elif c == ":":
             self.mode, self.cmd = "COMMAND", ""
-        elif c == "?":
+        elif c == "t":
+            self.live = not self.live
+            self.notice = ("Live trace ON  (t to toggle)"
+                           if self.live else "Live trace OFF  (t to toggle)")
+        elif c == ":live" or c == "?":
             return "help"
         return None
 
@@ -684,8 +688,26 @@ def draw_all(stdscr, session):
             safe_addstr(stdscr, row, sx + 3, f"{label:<24}", c_sig)
             safe_addstr(stdscr, row, sx + 29, val, c_lamp)
 
+    # live trace panel
+    if session.live:
+        from .utils import render_trace
+        trace_text = session.msg.text.replace(" ", "")
+        if trace_text:
+            want_color = True
+            trace_w = max(30, w - sx - 2)
+            ty = 2 + sig_h + 1
+            draw_box(stdscr, ty, sx, 12, trace_w, "LIVE TRACE  (t to toggle)", c_border)
+            rendered = render_trace(session.machine, trace_text[-20:],
+                                    color=False, width=trace_w - 4)
+            for ti, tline in enumerate(rendered.split("\n")[:10]):
+                safe_addstr(stdscr, ty + 1 + ti, sx + 2, tline[:trace_w - 4], c_sig)
+            logy = ty + 13
+        else:
+            logy = 2 + sig_h + 1
+    else:
+        logy = 2 + sig_h + 1
+
     # message area
-    logy = 2 + sig_h + 1
     draw_box(stdscr, logy, sx, 9, max(30, w - sx - 2), "MESSAGE", c_border)
     t   = session.msg.text
     cur = session.msg.cur
@@ -754,6 +776,7 @@ def draw_help(stdscr):
         "  p           paste the register at the cursor",
         "  v           enter VISUAL mode (then use motion keys to select)",
         "  :           open the COMMAND line",
+        "  t           toggle live vertical signal trace",
         "  ?           this help screen",
         "",
         "Commands  (TAB completes each word)",
@@ -863,10 +886,23 @@ def run(stdscr):
             draw_help(stdscr)
 
 
-def main():
-    session = Session()
+def main(machine=None, live: bool = False) -> None:
+    """Start the TUI.
+
+    Parameters
+    ----------
+    machine : Enigma, optional
+        Pre-configured machine from the CLI layer.  When None a default
+        machine is created.
+    live : bool
+        Open with the live signal-trace panel visible.
+    """
+    from .utils import build_report
+    session = Session(machine=machine)
+    if live:
+        session.live = True
     curses.wrapper(lambda scr: _run_with_session(scr, session))
-    report = build_exit_report(session)
+    report = build_report(session)
     if any(m["plain"] for m in ([{"plain": session.msg.text}] + session.finished)):
         print()
         print(report)
@@ -884,7 +920,3 @@ def _run_with_session(stdscr, session):
             break
         if action == "help":
             draw_help(stdscr)
-
-
-if __name__ == "__main__":
-    main()

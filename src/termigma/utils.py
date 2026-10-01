@@ -212,22 +212,27 @@ def stage_kind(label: str) -> str:
     return "back" if label.startswith("<-") else "fwd"
 
 
-def build_trace(machine: "Enigma", text: str):
-    """Replay *text* from the machine's start state and collect per-stage letter paths.
+def _clean_label(raw: str) -> str:
+    """Normalise an encode_letter() path label to a short display form."""
+    raw = raw.replace(" ->", "").replace("Entry Wheel (ETW)", "ETW")
+    if raw == "Keyboard":
+        return "Input"
+    if raw == "Lamp":
+        return "Output"
+    return raw
 
-    Returns ``(labels, kinds, columns, positions)`` where *columns* is a list with
-    one element per input character: either a list of letters (one per stage) or
-    ``None`` for a space.  *positions* carries the 4-tuple snapshot after each character.
+
+def build_trace(machine: "Enigma", text: str):
+    """Replay *text* and collect per-stage letter paths without side-effects.
+
+    Returns ``(labels, kinds, columns, positions)`` where *columns* is a list
+    with one element per input character: either a list of per-stage letters or
+    ``None`` for a space.  *positions* carries the 4-tuple snapshot after each
+    character.  Labels and positions are derived from encode_letter() paths so
+    they are always consistent with the encipherment.
     """
     start = machine.get_positions()
-    labels: list[str] = []
-    seen = False
-    for lab, _ in machine.trace("A")[1]:
-        if lab == "Plugboard":
-            lab, seen = ("<- Plugboard" if seen else "Plugboard ->"), True
-        labels.append("Input" if lab == "Keyboard" else
-                      "Output" if lab == "Lamp" else lab)
-    kinds = [stage_kind(l) for l in labels]
+    labels: list[str] | None = None
     cols, poss = [], []
     try:
         for ch in text:
@@ -235,11 +240,16 @@ def build_trace(machine: "Enigma", text: str):
                 cols.append(None)
                 poss.append(None)
                 continue
-            _out, path = machine.encode_letter(ch)
+            _out, path = machine.encode_letter(ch.upper())
+            if labels is None:
+                labels = [_clean_label(lab) for lab, _ in path]
             cols.append([letter for _, letter in path])
             poss.append(machine.get_positions())
     finally:
         machine.set_positions(start)
+    if labels is None:
+        labels = []
+    kinds = [stage_kind(l) for l in labels]
     return labels, kinds, cols, poss
 
 

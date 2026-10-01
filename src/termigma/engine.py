@@ -33,6 +33,7 @@ FOURTH_WHEEL_DATA = {
     "Gamma": {"wiring": "FSOKANUERHMBTIYCWLQPZXVGJD"},
 }
 FOURTH_WHEEL_CHOICES = list(FOURTH_WHEEL_DATA.keys())
+ETW_CHOICES = ("military", "commercial", "tirpitz")
 
 REFLECTOR_DATA = {
     "B":      "YRUHQSLDPXNGOKMIEBFZCWVJAT",
