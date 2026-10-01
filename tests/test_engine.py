@@ -282,3 +282,70 @@ def test_apply_model_clears_locks():
     m.locked = {"L", "R"}
     apply_model(m, "m3")
     assert m.locked == set()
+
+
+# ---------------------------------------------------------------------------
+# CLI, trace, KD, and Enigma D notch tests
+# ---------------------------------------------------------------------------
+def test_cli_encrypt_decrypt_roundtrip():
+    """Encrypting then decrypting with identical settings returns the original text."""
+    from termigma.cli import build_parser, configure_machine
+    from termigma.utils import encipher_text
+    argv = "-m m3 -r III II I -p A B C -s AB CD -t HELLO".split()
+    args = build_parser().parse_args(argv)
+    m1 = configure_machine(args)
+    cipher, _ = encipher_text(m1, "HELLO")
+    m2 = configure_machine(args)
+    plain, _  = encipher_text(m2, cipher)
+    assert plain == "HELLO"
+
+
+def test_cli_known_vector():
+    """Replicate the canonical README example: m3 III/II/I ABC plug AB CD."""
+    from termigma.cli import build_parser, configure_machine
+    from termigma.utils import encipher_text
+    args = build_parser().parse_args("-m m3 -r III II I -p A B C -s AB CD".split())
+    m = configure_machine(args)
+    cipher, _ = encipher_text(m, "HELLOWORLD")
+    assert cipher == "YHKUPBQIFM"
+
+
+def test_build_trace_matches_cipher():
+    """build_trace() must produce the same ciphertext as encipher_text()."""
+    from termigma.engine import Enigma
+    from termigma.utils import build_trace, encipher_text
+    m = Enigma(rotor_names=("I", "II", "III"), positions=("Q", "E", "V"))
+    text = "ATTACKATDAWN"
+    cipher, _ = encipher_text(m, text)
+    _, _, cols, _ = build_trace(m, text)
+    trace_out = "".join(col[-1] for col in cols if col is not None)
+    assert trace_out == cipher
+
+
+def test_enigma_d_notch_trivial_rs():
+    """Enigma D: all three rotors have notch at Z when ring=A."""
+    from termigma.engine import Rotor
+    for name in ("I-D", "II-D", "III-D"):
+        assert Rotor(name, ring_setting=1).notches == {"Z"}, \
+            f"{name} ring=A should have notch at Z"
+        assert Rotor(name, ring_setting=2).notches == {"A"}, \
+            f"{name} ring=B should shift notch to A"
+
+
+def test_enigma_d_notch_does_not_affect_k():
+    """Enigma K (I-K rotors) must not have trivial_rs — notches stay fixed."""
+    from termigma.engine import Rotor
+    k1 = Rotor("I-K", ring_setting=1)
+    k2 = Rotor("I-K", ring_setting=2)
+    assert k1.notches == k2.notches, "K rotor notch must not shift with ring"
+
+
+def test_kd_model_loads_and_enciphers():
+    """KD model must initialise with the placeholder reflector and encipher without error."""
+    from termigma.engine import Enigma, apply_model
+    m = Enigma()
+    apply_model(m, "kd")
+    assert m.reflector_kind == "Custom"
+    assert m.model_label == "KD (rewirable UKW-D)"
+    out, _ = m.encode_letter("A")
+    assert out in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
