@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+**Added — CLI mode, vertical trace, KD model, Enigma D notch fix**
+
+Full CLI mode (`python3 -m termigma`)
+  Every setting is now a flag.  Text comes from `--text`, `--file` or
+  stdin.  When no input is given on a real terminal the TUI opens.
+  Key flags: `-m/--model`, `-r/--rotors`, `-g/--ring`, `-p/--pos`,
+  `-u/--refl`, `--ukw`, `--ukwpos`, `--ukwring`, `-w/--wheel`,
+  `-s/--plug`, `--etw`, `--notch`, `--lock`, `--group N`, `--letters`,
+  `--keep-other`, `--json`, `-o/--out [PATH]`, `--list-models`,
+  `--show-config`, `--tui`, `--live`.
+
+Vertical signal trace
+  `-V/--vertical` (CLI) and `t` / `:live` (TUI) display a vertical
+  trace: one column per letter typed, one row per circuit stage, from
+  Input at the top to Output at the bottom.  Each cell shows the letter
+  at that stage; ANSI colour distinguishes input, plugboard, ETW, rotors
+  forward/back, reflector and output.  `-P/--positions` adds a row of
+  rotor positions under each block.
+
+Auto-named file output (`-o`)
+  `-o` with no path writes a file named after the full machine settings
+  (model, rotors, ring, pos, UKW, plugboard) with a timestamp, never
+  overwriting an existing file.  The file starts with a `# config:` line
+  carrying the one-liner CLI command so the origin is always traceable.
+
+`--json` output
+  Prints `{plain, cipher, output, config, cli, dropped}` as JSON.
+
+Enigma KD
+  New model (`kd`) — K wiring with a rewirable UKW-D reflector.  Ships a
+  minimal placeholder reflector that enforces the one documented fixed
+  contact (B↔O); operators supply their own wiring via `--ukw` / `:ukw`.
+
+**Fixed — Enigma D trivial Ringstellung notch**
+  The D-rotor turnover notch is fixed to the rotor *core*, not the ring.
+  Its window letter therefore *shifts with the ring setting* (ring A → Z,
+  ring B → A, …).  The previous code inherited the wrong K-model notch
+  positions (Y / E / N).  Fixed to Z for all three D rotors.
+  Full account in DATA.md §5.
+
+**Added — DATA.md and rewritten README.md**
+  DATA.md is the complete accuracy-evidence file: wiring-source audit,
+  Crypto Museum 64/64 comparison, 2 800-message mechanics fuzz, real-
+  message cross-checks, Enigma D notch history, known gaps.
+  README.md rewritten to cover the full feature set.
+
+## Unreleased
+
 **Added**
 
 - **`:model r0`** — R° (authentic Railway wiring, physically measured by
