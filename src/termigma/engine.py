@@ -604,6 +604,50 @@ class Enigma:
             self.set_positions(start)
         return "".join(cipher), snapshots, path
 
+    def trace(self, letter: str):
+        """Like encode_letter() but returns (output, path) without stepping the rotors.
+
+        Used by build_trace() to collect stage labels without advancing the machine.
+        The path is a list of (stage_label, letter_at_that_stage) tuples.
+        """
+        self.step_rotors()
+        return self._encode_no_step(letter.upper())
+
+    def _encode_no_step(self, letter: str):
+        """Encipher one letter through the current rotor positions without stepping."""
+        c = ALPHA.index(letter)
+        path = [("Keyboard", letter)]
+        if self.plugboard_enabled:
+            c = self.plugboard.apply(c)
+        path.append(("Plugboard", ALPHA[c]))
+        c = self.etw.forward(c)
+        path.append(("Entry Wheel (ETW)", ALPHA[c]))
+        if self.fourth:
+            c = self.fourth.forward(c)
+            path.append((f"Rotor 4th ({self.fourth.name})", ALPHA[c]))
+        for rotor, label in [(self.right, f"Rotor R ({self.right.label})"),
+                             (self.middle, f"Rotor M ({self.middle.label})"),
+                             (self.left,   f"Rotor L ({self.left.label})")]:
+            c = rotor.forward(c)
+            path.append((label, ALPHA[c]))
+        c = self.reflector.apply(c)
+        path.append((f"Reflector {self.reflector.label}", ALPHA[c]))
+        for rotor, label in [(self.left,   f"<- Rotor L ({self.left.label})"),
+                             (self.middle, f"<- Rotor M ({self.middle.label})"),
+                             (self.right,  f"<- Rotor R ({self.right.label})")]:
+            c = rotor.backward(c)
+            path.append((label, ALPHA[c]))
+        if self.fourth:
+            c = self.fourth.backward(c)
+            path.append((f"<- Rotor 4th ({self.fourth.name})", ALPHA[c]))
+        c = self.etw.backward(c)
+        path.append(("Entry Wheel (ETW) <-", ALPHA[c]))
+        if self.plugboard_enabled:
+            c = self.plugboard.apply(c)
+        path.append(("Plugboard", ALPHA[c]))
+        path.append(("Lamp", ALPHA[c]))
+        return ALPHA[c], path
+
     def step_rotors(self):
         L, M, R = self.left, self.middle, self.right
         lk = self.locked
